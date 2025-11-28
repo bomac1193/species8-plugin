@@ -18,13 +18,13 @@ Species8AudioProcessorEditor::Species8AudioProcessorEditor (Species8AudioProcess
     // Set custom look and feel
     setLookAndFeel (&glassmorphicLookAndFeel);
 
-    // Set editor size - taller for mascot
-    setSize (700, 600);
+    // Set editor size - spacious modern layout
+    setSize (850, 750);
 
-    // Title
+    // Title - modern minimal typography
     titleLabel.setText ("SPECIES 8", juce::dontSendNotification);
-    titleLabel.setFont (juce::Font (juce::FontOptions (48.0f, juce::Font::bold)).withExtraKerningFactor (0.1f));
-    titleLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+    titleLabel.setFont (juce::Font (juce::FontOptions (64.0f, juce::Font::plain)).withExtraKerningFactor (0.15f));
+    titleLabel.setColour (juce::Label::textColourId, juce::Colour (0xffffffff));
     titleLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (titleLabel);
 
@@ -34,15 +34,15 @@ Species8AudioProcessorEditor::Species8AudioProcessorEditor (Species8AudioProcess
     // Glassmorphic prompt panel (invisible, just for painting)
     addAndMakeVisible (promptPanel);
 
-    // Prompt text editor
+    // Prompt text editor - clean modern input
     promptTextEditor.setMultiLine (false);
     promptTextEditor.setReturnKeyStartsNewLine (false);
     promptTextEditor.setText ("wider, less muddy, plastic space");
-    promptTextEditor.setFont (juce::Font (juce::FontOptions (16.0f)));
-    promptTextEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0x20ffffff));
-    promptTextEditor.setColour (juce::TextEditor::textColourId, juce::Colours::white);
-    promptTextEditor.setColour (juce::TextEditor::outlineColourId, juce::Colour (0x409f7bff));
-    promptTextEditor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colour (0x809f7bff));
+    promptTextEditor.setFont (juce::Font (juce::FontOptions (18.0f, juce::Font::plain)));
+    promptTextEditor.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0x15ffffff));
+    promptTextEditor.setColour (juce::TextEditor::textColourId, juce::Colour (0xfff0f0f0));
+    promptTextEditor.setColour (juce::TextEditor::outlineColourId, juce::Colour (0x00000000));
+    promptTextEditor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colour (0x00000000));
     promptTextEditor.setJustification (juce::Justification::centred);
     addAndMakeVisible (promptTextEditor);
 
@@ -63,9 +63,9 @@ Species8AudioProcessorEditor::Species8AudioProcessorEditor (Species8AudioProcess
     dryWetSlider.setTextValueSuffix ("%");
     addAndMakeVisible (dryWetSlider);
 
-    dryWetLabel.setText ("Mix", juce::dontSendNotification);
-    dryWetLabel.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
-    dryWetLabel.setColour (juce::Label::textColourId, juce::Colour (0xffaaaaaa));
+    dryWetLabel.setText ("MIX", juce::dontSendNotification);
+    dryWetLabel.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::plain)).withExtraKerningFactor (0.12f));
+    dryWetLabel.setColour (juce::Label::textColourId, juce::Colour (0xffb0b0b0));
     dryWetLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (dryWetLabel);
 
@@ -75,9 +75,9 @@ Species8AudioProcessorEditor::Species8AudioProcessorEditor (Species8AudioProcess
     gainSlider.setTextValueSuffix (" dB");
     addAndMakeVisible (gainSlider);
 
-    gainLabel.setText ("Output", juce::dontSendNotification);
-    gainLabel.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
-    gainLabel.setColour (juce::Label::textColourId, juce::Colour (0xffaaaaaa));
+    gainLabel.setText ("OUTPUT", juce::dontSendNotification);
+    gainLabel.setFont (juce::Font (juce::FontOptions (10.0f, juce::Font::plain)).withExtraKerningFactor (0.12f));
+    gainLabel.setColour (juce::Label::textColourId, juce::Colour (0xffb0b0b0));
     gainLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (gainLabel);
 
@@ -108,19 +108,19 @@ Species8AudioProcessorEditor::~Species8AudioProcessorEditor()
 //==============================================================================
 void Species8AudioProcessorEditor::paint (juce::Graphics& g)
 {
-    // Deep space gradient background
+    // Modern minimal gradient background
     juce::ColourGradient bgGradient (
-        juce::Colour (0xff0a0a14), 0.0f, 0.0f,
-        juce::Colour (0xff1a1a2e), 0.0f, static_cast<float> (getHeight()),
+        juce::Colour (0xff0d0d18), 0.0f, 0.0f,
+        juce::Colour (0xff1a1a28), 0.0f, static_cast<float> (getHeight()),
         false);
     g.setGradientFill (bgGradient);
     g.fillAll();
 
-    // Cosmic glow orbs
-    g.setColour (juce::Colour (0x159f7bff));
-    g.fillEllipse (getWidth() * 0.2f, getHeight() * 0.1f, 300, 300);
-    g.setColour (juce::Colour (0x1552e9ff));
-    g.fillEllipse (getWidth() * 0.7f, getHeight() * 0.6f, 250, 250);
+    // Subtle ambient glow orbs - more refined
+    g.setColour (juce::Colour (0x0a9f7bff));
+    g.fillEllipse (getWidth() * 0.15f, getHeight() * 0.08f, 350, 350);
+    g.setColour (juce::Colour (0x0a52e9ff));
+    g.fillEllipse (getWidth() * 0.72f, getHeight() * 0.62f, 280, 280);
 
     // Glassmorphic prompt panel
     auto promptBounds = promptPanel.getBounds().toFloat();
@@ -140,67 +140,70 @@ void Species8AudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0x60ffffff));
     g.drawRoundedRectangle (promptBounds, 24.0f, 2.0f);
 
-    // Subtitle text below mascot
-    g.setColour (juce::Colour (0x80ffffff));
-    g.setFont (juce::Font (juce::FontOptions (11.0f, juce::Font::italic)));
-    auto subtitleArea = juce::Rectangle<float> (0, mascot.getBottom() + 5, getWidth(), 20);
-    g.drawText ("Break the norm. Birth the impossible.", subtitleArea, juce::Justification::centred);
+    // Subtitle text below mascot - minimal modern typography
+    g.setColour (juce::Colour (0x60ffffff));
+    g.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::plain)).withExtraKerningFactor (0.08f));
+    auto subtitleArea = juce::Rectangle<float> (0, mascot.getBottom() + 10, getWidth(), 25);
+    g.drawText ("AI-Inspired Sound Design", subtitleArea, juce::Justification::centred);
 }
 
 void Species8AudioProcessorEditor::resized()
 {
-    auto bounds = getLocalBounds().reduced (20);
+    auto bounds = getLocalBounds().reduced (40); // More generous margins
 
-    // Title at top
-    titleLabel.setBounds (bounds.removeFromTop (60));
+    // Title at top - more breathing room
+    bounds.removeFromTop (20); // Top padding
+    titleLabel.setBounds (bounds.removeFromTop (80));
+
+    bounds.removeFromTop (15); // Spacing
 
     // Mascot (large centerpiece)
-    auto mascotSize = 280;
+    auto mascotSize = 300; // Slightly larger
     mascot.setBounds (bounds.removeFromTop (mascotSize).withSizeKeepingCentre (mascotSize, mascotSize));
 
-    bounds.removeFromTop (30); // Spacing
+    bounds.removeFromTop (50); // More generous spacing
 
     // Glassmorphic prompt panel
-    auto promptAreaHeight = 120;
+    auto promptAreaHeight = 140; // Taller panel
     auto promptArea = bounds.removeFromTop (promptAreaHeight);
     promptPanel.setBounds (promptArea);
 
     // Prompt input and button inside panel
-    auto innerPrompt = promptArea.reduced (20);
+    auto innerPrompt = promptArea.reduced (30); // More padding
 
     // Mutate button on right
-    auto buttonWidth = 120;
-    mutateButton.setBounds (innerPrompt.removeFromBottom (50).removeFromRight (buttonWidth));
+    auto buttonWidth = 130;
+    mutateButton.setBounds (innerPrompt.removeFromBottom (55).removeFromRight (buttonWidth));
 
     // Text input fills remaining space
-    innerPrompt.removeFromBottom (10); // spacing
-    promptTextEditor.setBounds (innerPrompt.removeFromBottom (40));
+    innerPrompt.removeFromBottom (15); // More spacing
+    promptTextEditor.setBounds (innerPrompt.removeFromBottom (48)); // Taller input
 
-    bounds.removeFromTop (30); // Spacing
+    bounds.removeFromTop (40); // More spacing before controls
 
-    // Controls at bottom (minimal, small)
-    auto controlsArea = bounds.removeFromTop (100);
-    auto knobSize = 80;
-    auto spacing = 30;
+    // Controls at bottom - more spacious
+    auto controlsArea = bounds.removeFromTop (110);
+    auto knobSize = 90; // Larger knobs
+    auto spacing = 60; // More spacing between knobs
 
     auto totalWidth = knobSize * 2 + spacing;
     auto controlX = (controlsArea.getWidth() - totalWidth) / 2;
 
     // Mix knob
     auto mixArea = controlsArea.removeFromLeft (controlX).withWidth (knobSize);
-    dryWetLabel.setBounds (mixArea.removeFromTop (15));
+    dryWetLabel.setBounds (mixArea.removeFromTop (20)); // More space for label
     dryWetSlider.setBounds (mixArea);
 
     controlsArea.removeFromLeft (spacing);
 
     // Output knob
     auto outputArea = controlsArea.removeFromLeft (knobSize);
-    gainLabel.setBounds (outputArea.removeFromTop (15));
+    gainLabel.setBounds (outputArea.removeFromTop (20)); // More space for label
     gainSlider.setBounds (outputArea);
 
     // Bypass in center bottom
-    auto bypassArea = bounds.withHeight (30);
-    bypassButton.setBounds (bypassArea.withSizeKeepingCentre (100, 25));
+    auto bypassArea = bounds.withHeight (35);
+    bypassButton.setBounds (bypassArea.withSizeKeepingCentre (110, 28));
 }
 
 void Species8AudioProcessorEditor::timerCallback()

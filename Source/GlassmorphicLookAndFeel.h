@@ -108,8 +108,10 @@ public:
     void drawButtonText (juce::Graphics& g, juce::TextButton& button,
                          bool, bool) override
     {
-        g.setColour (juce::Colours::white);
-        g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+        g.setColour (juce::Colour (0xffffffff));
+        auto font = juce::Font (juce::FontOptions (13.0f, juce::Font::plain));
+        font = font.withExtraKerningFactor (0.15f);
+        g.setFont (font);
         g.drawText (button.getButtonText(), button.getLocalBounds(),
                     juce::Justification::centred, true);
     }
