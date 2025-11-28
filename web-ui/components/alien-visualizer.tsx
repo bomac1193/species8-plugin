@@ -2,10 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
+import { cn } from "@/lib/utils"
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:4000"
 
-export default function AlienVisualizer() {
+interface AlienVisualizerProps {
+  className?: string
+}
+
+export default function AlienVisualizer({ className }: AlienVisualizerProps = {}) {
   const [energy, setEnergy] = useState(0.25)
   const [waveform, setWaveform] = useState<number[]>([])
 
@@ -52,10 +57,10 @@ export default function AlienVisualizer() {
   }, [waveform])
 
   return (
-    <div className="relative w-full flex items-center justify-center min-h-[520px]">
+    <div className={cn("relative w-full flex items-center justify-center min-h-[440px]", className)}>
       <div className="absolute inset-0 blur-3xl bg-gradient-to-br from-purple-600/20 via-fuchsia-500/10 to-cyan-400/10 pointer-events-none" />
 
-      <div className="relative w-full max-w-xl aspect-[3/4] rounded-[60px] border border-white/20 bg-white/5/20 backdrop-blur-3xl overflow-hidden shadow-[0_40px_120px_rgba(90,30,255,0.35)]">
+      <div className="relative w-full max-w-lg aspect-[3/4] rounded-[48px] border border-white/20 bg-white/5/20 backdrop-blur-2xl overflow-hidden shadow-[0_30px_90px_rgba(90,30,255,0.35)]">
         <motion.div
           className="absolute inset-0"
           style={{

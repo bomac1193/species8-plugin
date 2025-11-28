@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useCallback, useMemo, useRef, useState } from "react"
+import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -163,14 +164,25 @@ export default function RichTextEditor({ className }: RichTextEditorProps) {
     }
   }, [content, wordCount, characterCount])
 
+  const [references, setReferences] = useState<string[]>([])
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const names = acceptedFiles.map((file) => file.name)
+    setReferences((prev) => [...prev, ...names].slice(-6))
+  }, [])
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { "audio/*": [], "video/*": [], "application/octet-stream": [] },
+    multiple: true,
+  })
+
   return (
-    <div className={cn("relative w-full mx-auto", className)}>
-      <div className="absolute -inset-6 bg-gradient-to-br from-purple-700/30 via-transparent to-cyan-400/20 blur-3xl opacity-80 pointer-events-none" />
+    <div className={cn("relative w-full mx-auto flex flex-col items-center", className)}>
+      <div className="absolute -inset-4 bg-gradient-to-br from-purple-700/25 via-transparent to-cyan-400/20 blur-3xl opacity-70 pointer-events-none" />
 
-      <div className="relative w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[32px] shadow-[0_45px_120px_rgba(10,2,25,0.55)] overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-purple-500/5 rounded-[32px] pointer-events-none" />
+      <div className="relative w-full bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[26px] shadow-[0_30px_80px_rgba(10,2,25,0.45)] overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-purple-500/5 rounded-[26px] pointer-events-none" />
 
-        <div className="flex flex-wrap items-center gap-2 p-6 bg-white/5 backdrop-blur-xl border-b border-white/10 relative z-10">
+        <div className="flex flex-wrap items-center gap-2 p-4 bg-white/5 backdrop-blur-xl border-b border-white/10 relative z-10 text-[13px]">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2 mr-2">
               <div className="p-2 bg-purple-500/20 backdrop-blur-sm rounded-xl border border-purple-400/30">
@@ -276,7 +288,14 @@ export default function RichTextEditor({ className }: RichTextEditorProps) {
           </div>
         </div>
 
-        <div className="relative">
+        <div className="relative" {...getRootProps()}>
+          <input {...getInputProps()} />
+          <div
+            className={cn(
+              "absolute inset-4 rounded-2xl border border-dashed border-white/30 transition-all pointer-events-none",
+              isDragActive ? "border-white/70 bg-white/5" : "border-white/20",
+            )}
+          />
           <div
             ref={editorRef}
             contentEditable
@@ -306,7 +325,19 @@ export default function RichTextEditor({ className }: RichTextEditorProps) {
           />
         </div>
 
-        <div className="px-8 py-6 bg-white/5 backdrop-blur-xl border-t border-white/10 text-sm text-white/70 relative z-10">
+        <div className="px-6 py-4 bg-white/5 backdrop-blur-xl border-t border-white/10 text-xs sm:text-sm text-white/70 relative z-10 space-y-3">
+          <div className="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.3em] text-white/60">
+            Reference Files:
+            {references.length === 0 && <span className="normal-case tracking-normal text-white/40">Drop stems or samples</span>}
+            {references.map((name) => (
+              <span
+                key={name}
+                className="px-2 py-0.5 rounded-full bg-white/10 border border-white/20 normal-case tracking-normal"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
             <div className="flex flex-wrap items-center gap-6">
               <span className="flex items-center gap-2 text-white/80">
