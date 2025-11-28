@@ -42,4 +42,4 @@ Thumbs.db
 *.aax
 
 # Submodules (if you add JUCE as submodule)
-# JUCE/
+JUCE/

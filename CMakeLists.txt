@@ -36,7 +36,9 @@ target_sources(Species8
         Source/PluginEditor.cpp
         Source/StereoWidthProcessor.cpp
         Source/WaveformDisplay.cpp
-        Source/DragDropComponent.cpp)
+        Source/DragDropComponent.cpp
+        Source/GlassmorphicLookAndFeel.cpp
+        Source/MascotComponent.cpp)
 
 target_compile_definitions(Species8
     PUBLIC

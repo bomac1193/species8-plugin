@@ -3,7 +3,7 @@
     PluginEditor.h
     Part of Species 8 - Sound Design Plugin
 
-    Main GUI editor for the plugin
+    Minimal, sleek, glassmorphic UI with The Mutant mascot
   ==============================================================================
 */
 
@@ -12,19 +12,21 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
-#include "DragDropComponent.h"
+#include "MascotComponent.h"
+#include "GlassmorphicLookAndFeel.h"
 
 //==============================================================================
 /**
- * @brief Main editor GUI for Species 8 plugin
+ * @brief Redesigned minimal glassmorphic editor for Species 8
  *
  * Features:
- * - Drag & drop audio file loading with waveform display
- * - Text prompt input field
- * - Mutate button for applying prompt
- * - Parameter controls (dry/wet, gain, bypass)
+ * - The Mutant animated mascot as centerpiece
+ * - Glassmorphic prompt input
+ * - Minimal, sleek controls
+ * - Smooth animations
  */
-class Species8AudioProcessorEditor : public juce::AudioProcessorEditor
+class Species8AudioProcessorEditor : public juce::AudioProcessorEditor,
+                                      private juce::Timer
 {
 public:
     explicit Species8AudioProcessorEditor (Species8AudioProcessor&);
@@ -35,36 +37,39 @@ public:
     void resized() override;
 
 private:
-    // Custom styling helper
-    void styleSlider (juce::Slider& slider);
-    void styleButton (juce::TextButton& button);
-    void styleLabel (juce::Label& label);
+    void timerCallback() override;
 
     // Reference to processor
     Species8AudioProcessor& audioProcessor;
 
+    // Custom look and feel
+    GlassmorphicLookAndFeel glassmorphicLookAndFeel;
+
     // GUI components
-    DragDropComponent dragDropComponent;
+    MascotComponent mascot;
 
     juce::Label titleLabel;
-    juce::Label subtitleLabel;
 
-    juce::Label promptLabel;
+    // Glassmorphic prompt panel
+    juce::Component promptPanel;
     juce::TextEditor promptTextEditor;
     juce::TextButton mutateButton;
 
-    juce::Label dryWetLabel;
+    // Minimal controls
     juce::Slider dryWetSlider;
-
-    juce::Label gainLabel;
     juce::Slider gainSlider;
-
     juce::ToggleButton bypassButton;
+
+    juce::Label dryWetLabel;
+    juce::Label gainLabel;
 
     // Parameter attachments
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> dryWetAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> gainAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+
+    // Animation
+    float mutateGlowIntensity = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Species8AudioProcessorEditor)
 };
