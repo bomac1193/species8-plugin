@@ -36,6 +36,7 @@ public:
 
     void paint (juce::Graphics& g) override;
     void resized() override;
+    void refreshFromProcessor();
 
 private:
     Species8AudioProcessor& processor;

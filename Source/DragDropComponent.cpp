@@ -50,10 +50,7 @@ void DragDropComponent::filesDropped (const juce::StringArray& files, int x, int
 
     if (processor.loadAudioFile (audioFile))
     {
-        // Update waveform display
-        waveformDisplay.setAudioBuffer (processor.getLoadedSampleBuffer(),
-                                       processor.getLoadedSampleRate());
-
+        refreshFromProcessor();
         DBG ("Loaded audio file: " << audioFile.getFileName());
     }
     else
@@ -99,4 +96,13 @@ void DragDropComponent::paint (juce::Graphics& g)
 void DragDropComponent::resized()
 {
     waveformDisplay.setBounds (getLocalBounds());
+}
+
+void DragDropComponent::refreshFromProcessor()
+{
+    if (processor.isSampleLoaded())
+        waveformDisplay.setAudioBuffer (processor.getLoadedSampleBuffer(),
+                                        processor.getLoadedSampleRate());
+
+    repaint();
 }

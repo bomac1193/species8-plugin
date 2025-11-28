@@ -6,6 +6,36 @@ Species 8 is a JUCE-based audio plugin (VST3/AU/Standalone) that allows users to
 
 ![Species 8 Plugin](docs/screenshot.png)
 
+## New Hybrid Architecture (Preview)
+
+We are in the middle of moving Species 8 to a **hybrid architecture**:
+
+- `dsp-engine/` (this JUCE project) remains the native audio brain.
+- `web-ui/` now contains the **glassmorphic V0 template** (React/Tailwind) for the AI prompt and drag-and-drop hero section.
+- `server/` is a lightweight Node/Express/WebSocket bridge. It already exposes `/mutate`, `/mutations`, `/preview/waveform`, and pushes job updates over WebSockets. Right now the bridge simulates DSP output; next we’ll swap in the real JUCE process behind the same interface.
+
+This split gives us the best of both worlds: a pixel-perfect, GPU-accelerated UI and a native DSP core for ultra-low-latency audio mutation.
+
+### Running the preview stack
+
+> Requirements: Node 18+, npm, and (optionally) pnpm/yarn.
+
+```bash
+# 1. Start the server bridge
+cd server
+npm install
+npm run dev
+
+# 2. In another terminal, launch the web UI (Next.js template)
+cd ../web-ui
+npm install
+npm run dev
+```
+
+The UI will open at http://localhost:3000 and talks to the bridge on http://localhost:4000 (health + mutation queues). This is the same V0 glassmorphic layout you referenced; we’ll wire it to the DSP engine in the next iteration.
+
+> The legacy JUCE standalone is still available in `build/Species8_artefacts/Standalone/Species 8`, but that UI will soon become headless once the bridge is complete.
+
 ## Features
 
 - **🎵 Drag & Drop Audio Loading**: Load WAV, AIFF, MP3, FLAC files directly into the plugin
@@ -15,6 +45,7 @@ Species 8 is a JUCE-based audio plugin (VST3/AU/Standalone) that allows users to
   - High-pass filtering (mud reduction)
   - High-shelf EQ (brightness control)
   - M/S stereo width processing
+  - Binaural orbit spatializer for 8D-style motion
   - Reverb (space/plastic effects)
 - **🎛️ Manual Controls**: Dry/Wet mix, Output Gain, and Bypass
 - **🎨 Futuristic UI**: Dark theme with purple accents
@@ -36,6 +67,10 @@ Species 8 is a JUCE-based audio plugin (VST3/AU/Standalone) that allows users to
 ### Space
 - `space`, `reverb`, `plastic`, `high-tech` → Adds reverb and space
 - `dry`, `intimate`, `close` → Reduces reverb
+
+### Immersive Motion
+- `8d`, `orbit`, `around`, `immersive`, `binaural` → Enables the binaural orbit engine for moving 3D sound
+- `static`, `center`, `mono` → Keeps the sound anchored in front
 
 ## Building from Source
 
