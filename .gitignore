@@ -1,0 +1,45 @@
+# Build directories
+build/
+Builds/
+cmake-build-*/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln.docstates
+*.xcuserstate
+xcuserdata/
+
+# Compiled binaries
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.lib
+
+# JUCE specific
+JuceLibraryCode/
+*.jucer.bak
+
+# macOS
+.DS_Store
+*.dSYM/
+
+# Windows
+Thumbs.db
+*.pdb
+*.ilk
+
+# Build artifacts
+*.vst3
+*.component
+*.app
+*.aax
+
+# Submodules (if you add JUCE as submodule)
+# JUCE/
