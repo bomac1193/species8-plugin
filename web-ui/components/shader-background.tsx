@@ -47,7 +47,7 @@ export default function ShaderBackground({ children }: ShaderBackgroundProps) {
       </svg>
 
       <div className="absolute inset-0 animate-slow-pan">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(132,56,255,0.45),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(0,213,255,0.35),transparent_40%),radial-gradient(circle_at_50%_80%,rgba(255,70,190,0.35),transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.18),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(180,180,180,0.2),transparent_40%),radial-gradient(circle_at_50%_80%,rgba(120,120,120,0.2),transparent_50%)]" />
         <div
           className={cn(
             "absolute inset-0 opacity-60 blur-[120px]",
@@ -55,7 +55,7 @@ export default function ShaderBackground({ children }: ShaderBackgroundProps) {
           )}
           style={{
             background:
-              "conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.2), rgba(69,33,255,0.35), rgba(0,224,255,0.25), rgba(255,90,217,0.3), rgba(255,255,255,0.2))",
+              "conic-gradient(from 180deg at 50% 50%, rgba(255,255,255,0.25), rgba(40,40,40,0.6), rgba(180,180,180,0.3), rgba(30,30,30,0.7), rgba(255,255,255,0.25))",
           }}
         />
       </div>
