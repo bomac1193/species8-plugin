@@ -1,21 +1,29 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Poppins } from "next/font/google"
+import localFont from "next/font/local"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import "./globals.css"
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-poppins",
+const sohne = localFont({
+  src: [
+    { path: "../public/fonts/sohne-light.otf", weight: "300", style: "normal" },
+    { path: "../public/fonts/sohne-book.ttf", weight: "400", style: "normal" },
+    { path: "../public/fonts/sohne-medium.otf", weight: "500", style: "normal" },
+  ],
+  variable: "--font-sohne",
+  display: "swap",
+})
+
+const canela = localFont({
+  src: [{ path: "../public/fonts/canela-regular.ttf", weight: "400", style: "normal" }],
+  variable: "--font-canela",
   display: "swap",
 })
 
 export const metadata: Metadata = {
-  title: "Minimalist Rich Text Editor",
-  description: "A beautiful, minimalist rich text editor",
-  generator: "v0.app",
+  title: "Species 8",
+  description: "Sound mutation console",
 }
 
 export default function RootLayout({
@@ -25,7 +33,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans ${poppins.variable} bg-[#0A0A0A] text-white min-h-screen`}>
+      <body className={`font-sans ${sohne.variable} ${canela.variable} bg-[#0A0A0A] text-white min-h-screen`}>
         <Suspense fallback={null}>
           {children}
           <Analytics />

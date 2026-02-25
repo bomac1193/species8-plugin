@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useDropzone } from "react-dropzone"
 import { motion } from "framer-motion"
 
@@ -26,6 +26,7 @@ type MutationJob = {
   createdAt?: string
   previewUrl?: string | null
   interpretation?: AIInterpretation
+  error?: string
 }
 
 type UploadedReference = {
@@ -33,18 +34,11 @@ type UploadedReference = {
   name: string
 }
 
-const controls = [
-  { label: "DW", value: 0.32 },
-  { label: "WD", value: 0.58 },
-  { label: "CL", value: 0.18 },
-  { label: "OUT", value: 0.72 },
-]
-
 const statusMeta: Record<string, { label: string; dot: string; tone: string }> = {
-  processing: { label: "QUEUED", dot: "bg-white/30", tone: "text-white/40" },
-  rendering: { label: "RENDERING", dot: "bg-white/60 animate-pulse", tone: "text-white/60" },
-  ready: { label: "READY", dot: "bg-white", tone: "text-white/80" },
-  error: { label: "ERROR", dot: "bg-white/20", tone: "text-white/25" },
+  processing: { label: "QUEUED", dot: "bg-white/25", tone: "text-white/35" },
+  rendering: { label: "RENDERING", dot: "bg-violet-400/50 animate-pulse", tone: "text-white/55" },
+  ready: { label: "READY", dot: "bg-violet-400/70", tone: "text-white/70" },
+  error: { label: "ERROR", dot: "bg-red-400/30", tone: "text-white/20" },
 }
 
 export default function PromptStudio() {
@@ -55,6 +49,7 @@ export default function PromptStudio() {
   const [mutations, setMutations] = useState<MutationJob[]>([])
   const [bridgeStatus, setBridgeStatus] = useState<"connecting" | "online" | "offline">("connecting")
   const [isUploading, setIsUploading] = useState(false)
+  const [timeExtend, setTimeExtend] = useState(1)
 
   const wsUrl = useMemo(() => {
     if (SERVER_URL.startsWith("https://")) return SERVER_URL.replace("https://", "wss://")
@@ -100,6 +95,7 @@ export default function PromptStudio() {
     [uploadFile],
   )
 
+  // getRootProps goes on the drop zone div — the proven working pattern
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "audio/*": [] },
@@ -109,9 +105,9 @@ export default function PromptStudio() {
 
   const dropLabel = useMemo(() => {
     if (isUploading) return "Uploading..."
-    if (uploads.length === 0) return "Drag Sound Here"
+    if (uploads.length === 0) return "Drop audio"
     if (uploads.length === 1) return uploads[0].name
-    return `${uploads[0].name} +${uploads.length - 1}`
+    return `${uploads.length} files — merged`
   }, [uploads, isUploading])
 
   const upsertMutation = useCallback((job: MutationJob) => {
@@ -186,7 +182,7 @@ export default function PromptStudio() {
   const handleMutate = useCallback(async () => {
     const trimmed = prompt.trim()
     if (!trimmed) {
-      setMutationStatus({ kind: "error", message: "Describe the mutation before firing the console." })
+      setMutationStatus({ kind: "error", message: "Describe the mutation first." })
       return
     }
 
@@ -199,7 +195,7 @@ export default function PromptStudio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: trimmed,
-          settings: { references: uploads.map((item) => item.id), source: "species8-monolith" },
+          settings: { references: uploads.map((item) => item.id), timeExtend, source: "species8-monolith" },
         }),
       })
 
@@ -211,50 +207,97 @@ export default function PromptStudio() {
       upsertMutation(mutation)
       setMutationStatus({
         kind: "success",
-        message: `Mutation ${mutation?.id ?? "queued"} dispatched to bridge.`,
+        message: `Mutation ${mutation?.id ?? "queued"} dispatched.`,
       })
     } catch (error) {
       console.error(error)
       setMutationStatus({
         kind: "error",
-        message: "Bridge unreachable. Start npm run dev in /server.",
+        message: "Bridge unreachable. Start the server.",
       })
     } finally {
       setIsMutating(false)
     }
-  }, [prompt, uploads, upsertMutation])
+  }, [prompt, uploads, timeExtend, upsertMutation])
 
   return (
-    <main className="min-h-screen bg-black text-white flex items-center justify-center px-3 py-10">
-      <div className="relative w-full max-w-4xl bg-[#050505] border border-white/70 rounded-[8px] overflow-hidden text-xs tracking-[0.2em]">
-        <div className="absolute inset-0 pointer-events-none opacity-50">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_55%)]" />
-          <div className="absolute inset-[1px] border border-white/10 rounded-[7px]" />
-          <div className="absolute top-6 left-6 right-6 h-[1px] bg-white/10" />
-          <div className="absolute bottom-6 left-6 right-6 h-[1px] bg-white/10" />
-        </div>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-3 py-8 selection:bg-violet-400/20">
+      <div className="relative w-full max-w-[560px]">
+        {/* Top edge highlight */}
+        <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/[0.1] to-transparent pointer-events-none z-10" />
 
-        <div className="relative px-5 py-6 space-y-5">
-          <header className="flex items-center justify-between text-[0.55rem] uppercase">
-            <div className="flex items-center gap-3">
-              <span className="tracking-[0.6em] text-white/80 font-light">SPECIES-8</span>
-              <SphinxMascot />
+        <div className="relative bg-[#050505] border border-white/[0.07] rounded-xl overflow-hidden">
+          {/* ─── Header ─── */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.05]">
+            <div className="flex items-baseline gap-2">
+              <span className="brand text-[0.95rem] text-white/55 italic">Species</span>
+              <span className="text-[0.85rem] text-white/40 font-light tracking-[0.3em]" style={{ textShadow: '0 0 8px rgba(255,255,255,0.25)' }}>8</span>
             </div>
             <DNAWaveformIcon />
-            <div className="flex items-center gap-2 text-[0.45rem] tracking-[0.4em] text-white/60">
-              <span>08</span>
-              <span className="w-10 h-px bg-white/30" />
-              <span>LAB</span>
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full transition-colors duration-500 ${
+                bridgeStatus === "online"
+                  ? "bg-violet-400/60"
+                  : bridgeStatus === "connecting"
+                    ? "bg-white/15 animate-pulse"
+                    : "bg-white/[0.06]"
+              }`} />
+              <span className="text-[0.5rem] tracking-[0.3em] uppercase text-white/20 font-light">{bridgeStatus}</span>
             </div>
-          </header>
+          </div>
 
-          <section className="flex flex-col gap-4">
-            {/* Hidden honeypot fields absorb browser autofill */}
+          <div className="p-5 space-y-3.5">
+            {/* ─── Drop zone ─── */}
+            <div
+              {...getRootProps({
+                className: `group relative rounded-lg border border-dashed transition-all duration-300 cursor-pointer ${
+                  isDragActive
+                    ? "border-violet-400/25 bg-violet-400/[0.03]"
+                    : "border-white/[0.08] bg-white/[0.01] hover:border-white/[0.15] hover:bg-white/[0.015]"
+                }`,
+              })}
+            >
+              <input {...getInputProps()} />
+              <div className="px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-white/20 group-hover:text-white/35 transition-colors shrink-0">
+                    <path d="M7 9V2M4.5 4.5L7 2l2.5 2.5" />
+                    <path d="M2.5 11.5h9" />
+                  </svg>
+                  <span className={`text-[0.65rem] tracking-[0.25em] uppercase transition-colors truncate ${
+                    isDragActive ? "text-violet-300/45" : "text-white/25 group-hover:text-white/40"
+                  }`}>
+                    {dropLabel}
+                  </span>
+                </div>
+                {uploads.length > 1 && (
+                  <span className="text-[0.45rem] tracking-wider uppercase text-violet-300/25 shrink-0 pl-3">merged</span>
+                )}
+                {uploads.length === 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setUploads([]) }}
+                    className="text-[0.45rem] text-white/15 hover:text-white/35 transition-colors shrink-0 pl-3"
+                  >
+                    clear
+                  </button>
+                )}
+              </div>
+              {isUploading && (
+                <div className="px-4 pb-2.5 text-[0.55rem] tracking-[0.2em] text-violet-300/30 animate-pulse uppercase">
+                  Uploading
+                </div>
+              )}
+            </div>
+
+            {/* Anti-autofill honeypot */}
             <div aria-hidden="true" className="absolute opacity-0 h-0 overflow-hidden pointer-events-none">
               <input type="text" name="username" tabIndex={-1} value="" readOnly />
               <input type="password" name="password" tabIndex={-1} value="" readOnly />
             </div>
-            <div className="flex items-stretch border border-white/70 rounded-[6px] bg-white/[0.05] backdrop-blur-sm">
+
+            {/* ─── Prompt bar ─── */}
+            <div className="flex items-center rounded-lg border border-white/[0.08] bg-white/[0.02] focus-within:border-white/[0.15] transition-all duration-300 overflow-hidden prompt-focus-glow">
               <input
                 type="search"
                 role="searchbox"
@@ -269,115 +312,199 @@ export default function PromptStudio() {
                 placeholder="Describe the mutation..."
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                className="flex-1 bg-transparent text-white/80 text-[0.75rem] tracking-[0.2em] px-3 py-2.5 placeholder:text-white/40 focus:outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+                onKeyDown={(event) => { if (event.key === "Enter") handleMutate() }}
+                className="flex-1 bg-transparent text-white/75 text-[0.8rem] tracking-wide px-4 py-2.5 placeholder:text-white/20 focus:outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
               />
               <button
-                className="px-4 text-[0.6rem] uppercase tracking-[0.45em] border-l border-white/50 bg-white/[0.08] hover:bg-white/[0.12] transition-colors disabled:text-white/30 disabled:hover:bg-white/[0.08]"
+                className="px-4 py-2.5 text-[0.55rem] uppercase tracking-[0.5em] text-white/30 hover:text-white/90 hover:bg-violet-500/[0.08] transition-all duration-200 disabled:text-white/10 disabled:hover:bg-transparent border-l border-white/[0.06] shrink-0"
                 type="button"
                 onClick={handleMutate}
                 disabled={isMutating || isUploading}
               >
-                {isMutating ? "MUTATING" : "MUTATE"}
+                {isMutating ? "..." : "GO"}
               </button>
             </div>
 
-            <div className="relative border border-white/40 rounded-[6px] bg-white/[0.04] backdrop-blur-[3px]">
-              <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-white/40 to-transparent" />
-              <div className="grid grid-cols-4">
-                {controls.map((control, index) => (
-                  <ControlModule key={control.label} {...control} isFirst={index === 0} />
+            {/* ─── Time extend ─── */}
+            <div className="flex items-center gap-4 px-1">
+              <span className="text-[0.55rem] tracking-[0.3em] uppercase text-white/20 font-light shrink-0">Time</span>
+              <div className="flex gap-1.5">
+                {([1, 2, 4, 8] as const).map((mult) => (
+                  <button
+                    key={mult}
+                    type="button"
+                    onClick={() => setTimeExtend(mult)}
+                    className={`text-[0.55rem] tabular-nums px-2.5 py-1.5 rounded-md cursor-pointer select-none transition-all duration-200 ${
+                      timeExtend === mult
+                        ? "bg-violet-500/[0.1] text-white/70 border border-violet-400/[0.15]"
+                        : "text-white/25 hover:text-white/50 border border-white/[0.05] hover:border-white/[0.1] hover:bg-white/[0.03]"
+                    }`}
+                  >
+                    {mult}x
+                  </button>
                 ))}
               </div>
             </div>
-          </section>
 
-          <section className="flex items-center justify-between gap-3 text-[0.5rem]">
-            <div
-              {...getRootProps({
-                className:
-                  "flex-1 border border-dotted border-white/60 rounded-[6px] bg-white/[0.04] backdrop-blur-[3px] px-3 py-2.5 text-center uppercase text-white/70 cursor-pointer transition-colors",
-              })}
-            >
-              <input {...getInputProps()} />
-              <div className={isDragActive ? "text-white" : "text-white/70"}>{dropLabel}</div>
-              {uploads.length > 1 && (
-                <div className="mt-1 text-[0.45rem] tracking-[0.3em] text-white/40">
-                  {uploads
-                    .slice(1)
-                    .map((file) => file.name)
-                    .join(" · ")}
-                </div>
-              )}
-              {isUploading && <div className="mt-1 text-[0.45rem] tracking-[0.3em] text-white/40">Processing...</div>}
-            </div>
-            <div className="w-[1px] h-10 bg-white/20" />
-            <div className="flex flex-col gap-1">
-              <div className="text-white/50 tracking-[0.5em]">INPUT</div>
-              <div className="h-1 w-12 bg-white/20" />
-            </div>
-          </section>
-          {mutationStatus && (
-            <div
-              className={`text-[0.48rem] tracking-[0.35em] uppercase ${
-                mutationStatus.kind === "success" ? "text-white/70" : "text-white/40"
-              }`}
-            >
-              {mutationStatus.message}
-            </div>
-          )}
-          <div className="rounded-[6px] overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-2 bg-black border border-white/10 rounded-t-[6px]">
-              <div className="flex items-center gap-2 text-[0.45rem] tracking-[0.4em] uppercase text-white/50">
-                <span>MUTATIONS</span>
-                {mutations.length > 0 && (
-                  <span className="text-[0.4rem] bg-white/10 px-1.5 py-0.5 rounded-[3px] text-white/40">{mutations.length}</span>
-                )}
+            {/* Status toast */}
+            {mutationStatus && (
+              <div className={`text-[0.55rem] tracking-[0.2em] uppercase px-1 transition-colors ${
+                mutationStatus.kind === "success" ? "text-white/30" : "text-white/20"
+              }`}>
+                {mutationStatus.message}
               </div>
-              <div className="flex items-center gap-1.5 text-[0.4rem] tracking-[0.3em] uppercase text-white/35">
-                <div className={`w-1.5 h-1.5 rounded-full ${
-                  bridgeStatus === "online" ? "bg-white/80" : bridgeStatus === "connecting" ? "bg-white/40 animate-pulse" : "bg-white/15"
-                }`} />
-                <span>{bridgeStatus}</span>
-              </div>
-            </div>
-            <div className="bg-black border-x border-b border-white/10 rounded-b-[6px] divide-y divide-white/[0.06]">
-              {mutations.length === 0 && (
-                <div className="px-3 py-4 text-center text-[0.42rem] tracking-[0.35em] uppercase text-white/25">
-                  No mutations yet
-                </div>
-              )}
-              {mutations.map((job, index) => (
-                <MutationCard key={job.id} job={job} index={index + 1} previewOrigin={previewOrigin} />
-              ))}
-            </div>
+            )}
+
+            {/* Divider */}
+            <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+            {/* ─── Output ─── */}
+            <MutationQueue mutations={mutations} previewOrigin={previewOrigin} />
           </div>
         </div>
       </div>
-    </main>
+    </div>
   )
 }
 
-function MutationCard({ job, index, previewOrigin }: { job: MutationJob; index: number; previewOrigin: string }) {
-  const [showInterpretation, setShowInterpretation] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const audioRef = useCallback((node: HTMLAudioElement | null) => {
-    if (!node) return
-    const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
-    const onEnded = () => setIsPlaying(false)
-    node.addEventListener("play", onPlay)
-    node.addEventListener("pause", onPause)
-    node.addEventListener("ended", onEnded)
-  }, [])
+/* ────────────────────────────────────────────────────────────────────────── */
 
-  const meta = statusMeta[job.status] ?? {
-    label: job.status?.toUpperCase?.() ?? "UNKNOWN",
-    dot: "bg-white/20",
-    tone: "text-white/30",
-  }
+function MutationQueue({
+  mutations,
+  previewOrigin,
+}: {
+  mutations: MutationJob[]
+  previewOrigin: string
+}) {
+  const ready = mutations.filter((j) => j.status === "ready")
+  const pending = mutations.filter((j) => j.status !== "ready")
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[0.6rem] tracking-[0.4em] uppercase text-white/30 font-light">Output</span>
+        {mutations.length > 0 && (
+          <span className="text-[0.5rem] tabular-nums text-white/20 font-light">
+            {ready.length}<span className="text-white/10 mx-0.5">/</span>{mutations.length}
+          </span>
+        )}
+      </div>
+
+      {mutations.length === 0 && (
+        <div className="py-10 text-center">
+          <p className="brand italic text-[0.85rem] text-white/[0.07] select-none">
+            Mutations will appear here
+          </p>
+        </div>
+      )}
+
+      {ready.length > 0 && (
+        <div className="space-y-2">
+          {ready.map((job, i) => (
+            <MutationCard key={job.id} job={job} index={i + 1} previewOrigin={previewOrigin} />
+          ))}
+        </div>
+      )}
+
+      {pending.length > 0 && (
+        <div className="space-y-1.5">
+          {ready.length > 0 && (
+            <div className="text-[0.5rem] tracking-[0.3em] uppercase text-white/15 pt-1 font-light">Processing</div>
+          )}
+          {pending.map((job) => {
+            const meta = statusMeta[job.status] ?? { label: "...", dot: "bg-white/10", tone: "text-white/20" }
+            return (
+              <div key={job.id} className="flex items-center gap-2.5 py-1.5">
+                <div className={`w-[5px] h-[5px] rounded-full shrink-0 ${meta.dot}`} />
+                <span className="text-[0.6rem] text-white/30 truncate flex-1">{job.prompt}</span>
+                <span className={`text-[0.5rem] tracking-[0.25em] uppercase shrink-0 ${meta.tone}`}>{meta.label}</span>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function MutationCard({ job, index, previewOrigin }: { job: MutationJob; index: number; previewOrigin: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [waveformData, setWaveformData] = useState<number[] | null>(null)
+  const audioElRef = useRef<HTMLAudioElement | null>(null)
+  const rafRef = useRef<number>(0)
+  const waveformRef = useRef<HTMLDivElement | null>(null)
+  const scrubbingRef = useRef(false)
+  const scrubPctRef = useRef(0)
 
   const audioUrl = job.previewUrl ? `${previewOrigin}${job.previewUrl}` : null
-  const isReady = job.status === "ready" && audioUrl
+
+  // Decode audio and extract waveform peaks on mount
+  useEffect(() => {
+    if (!audioUrl) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(audioUrl)
+        const buf = await res.arrayBuffer()
+        const ctx = new AudioContext()
+        const decoded = await ctx.decodeAudioData(buf)
+        ctx.close()
+        if (cancelled) return
+        const raw = decoded.getChannelData(0)
+        const n = 120
+        const blockSize = Math.floor(raw.length / n)
+        const peaks: number[] = []
+        for (let i = 0; i < n; i++) {
+          let peak = 0
+          const start = i * blockSize
+          for (let j = 0; j < blockSize; j++) {
+            const v = Math.abs(raw[start + j])
+            if (v > peak) peak = v
+          }
+          peaks.push(peak)
+        }
+        const max = Math.max(...peaks, 0.001)
+        setWaveformData(peaks.map((p) => p / max))
+      } catch {
+        // Seed-based fallback renders automatically
+      }
+    })()
+    return () => { cancelled = true }
+  }, [audioUrl])
+
+  // Track playback progress via rAF — suppressed while user is scrubbing
+  const updateProgress = useCallback(() => {
+    const el = audioElRef.current
+    if (el && el.duration && !el.paused) {
+      if (!scrubbingRef.current) {
+        setProgress(el.currentTime / el.duration)
+      }
+      rafRef.current = requestAnimationFrame(updateProgress)
+    }
+  }, [])
+
+  const audioRef = useCallback((node: HTMLAudioElement | null) => {
+    audioElRef.current = node
+    if (!node) return
+    node.addEventListener("play", () => {
+      setIsPlaying(true)
+      rafRef.current = requestAnimationFrame(updateProgress)
+    })
+    node.addEventListener("pause", () => {
+      setIsPlaying(false)
+      cancelAnimationFrame(rafRef.current)
+    })
+    node.addEventListener("ended", () => {
+      if (scrubbingRef.current) return
+      setIsPlaying(false)
+      setProgress(0)
+      cancelAnimationFrame(rafRef.current)
+    })
+  }, [updateProgress])
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -391,14 +518,82 @@ function MutationCard({ job, index, previewOrigin }: { job: MutationJob; index: 
   )
 
   const togglePlay = useCallback(() => {
-    const el = document.getElementById(`audio-${job.id}`) as HTMLAudioElement | null
+    const el = audioElRef.current
     if (!el) return
+    document.querySelectorAll<HTMLAudioElement>("audio").forEach((a) => {
+      if (a !== el && !a.paused) a.pause()
+    })
     if (el.paused) {
       el.play()
     } else {
       el.pause()
     }
-  }, [job.id])
+  }, [])
+
+  // Compute seek percentage from pointer position
+  const pctFromPointer = useCallback((clientX: number) => {
+    const div = waveformRef.current
+    if (!div) return -1
+    const rect = div.getBoundingClientRect()
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+  }, [])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    e.preventDefault()
+    scrubbingRef.current = true
+
+    const el = audioElRef.current
+    if (!el) return
+    const pct = pctFromPointer(e.clientX)
+    if (pct < 0) return
+
+    // Pause this element during scrub (prevents race conditions)
+    if (!el.paused) el.pause()
+
+    // Stop all other audio
+    document.querySelectorAll<HTMLAudioElement>("audio").forEach((a) => {
+      if (a !== el && !a.paused) a.pause()
+    })
+
+    // Visual update only — no el.currentTime during drag
+    scrubPctRef.current = pct
+    setProgress(pct)
+  }, [pctFromPointer])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!scrubbingRef.current) return
+    const pct = pctFromPointer(e.clientX)
+    if (pct < 0) return
+    // Visual update only — no el.currentTime during drag
+    scrubPctRef.current = pct
+    setProgress(pct)
+  }, [pctFromPointer])
+
+  const handlePointerUp = useCallback(() => {
+    if (!scrubbingRef.current) return
+    scrubbingRef.current = false
+
+    const el = audioElRef.current
+    if (!el) return
+    const pct = scrubPctRef.current
+
+    // Not loaded — kick off load, then seek+play
+    if (!el.duration || isNaN(el.duration)) {
+      el.addEventListener("loadedmetadata", () => {
+        el.currentTime = pct * el.duration
+        el.addEventListener("seeked", () => el.play().catch(() => {}), { once: true })
+      }, { once: true })
+      el.load()
+      return
+    }
+
+    // Single seek, wait for confirmation, then play
+    el.currentTime = pct * el.duration
+    el.addEventListener("seeked", () => {
+      el.play().catch(() => {})
+    }, { once: true })
+  }, [])
 
   const timeLabel = useMemo(() => {
     if (!job.createdAt) return ""
@@ -407,210 +602,302 @@ function MutationCard({ job, index, previewOrigin }: { job: MutationJob; index: 
   }, [job.createdAt])
 
   return (
-    <div className="group px-3 py-2.5 hover:bg-white/[0.02] transition-colors">
-      {/* Row 1: Index + Prompt + Status */}
-      <div className="flex items-center gap-2.5">
-        <span className="text-[0.5rem] tabular-nums text-white/20 w-4 shrink-0 text-right font-light">
+    <div className={`rounded-lg border overflow-hidden transition-all duration-300 ${
+      isPlaying
+        ? "bg-white/[0.025] border-violet-400/[0.12]"
+        : "bg-black border-white/[0.06] hover:border-white/[0.1]"
+    }`}>
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        <span className="text-[0.55rem] tabular-nums text-white/15 w-4 shrink-0 text-right font-light">
           {String(index).padStart(2, "0")}
         </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-[0.5rem] tracking-[0.15em] text-white/60 truncate">
-            {job.prompt}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {job.interpretation && (
-            <button
-              type="button"
-              onClick={() => setShowInterpretation((prev) => !prev)}
-              className="text-[0.38rem] tracking-[0.25em] uppercase text-white/20 hover:text-white/50 transition-colors px-1"
-            >
-              {showInterpretation ? "HIDE" : "AI"}
-            </button>
+
+        {/* Play / Pause */}
+        <button
+          type="button"
+          onClick={togglePlay}
+          className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 shrink-0 ${
+            isPlaying
+              ? "bg-violet-500/[0.12] hover:bg-violet-500/[0.18]"
+              : "bg-white/[0.04] hover:bg-violet-500/[0.1]"
+          }`}
+        >
+          {isPlaying ? (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="white" fillOpacity="0.75">
+              <rect x="2" y="1.5" width="2" height="7" rx="0.5" />
+              <rect x="6" y="1.5" width="2" height="7" rx="0.5" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="white" fillOpacity="0.6">
+              <path d="M3 1.5L8.5 5L3 8.5Z" />
+            </svg>
           )}
-          {timeLabel && (
-            <span className="text-[0.38rem] tabular-nums text-white/15">{timeLabel}</span>
-          )}
-          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} title={meta.label} />
+        </button>
+
+        {/* Waveform — click or drag to scrub */}
+        <div
+          ref={waveformRef}
+          className="flex-1 h-9 relative cursor-pointer select-none touch-none"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+        >
+          <WaveformSVG data={waveformData} seed={job.id} isPlaying={isPlaying} progress={progress} />
         </div>
-      </div>
 
-      {/* Row 2: Audio Player + Drag Handle (only when ready) */}
-      {isReady && (
-        <div className="flex items-center gap-2.5 mt-2 ml-[26px]">
-          <button
-            type="button"
-            onClick={togglePlay}
-            className="w-6 h-6 rounded-[4px] bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] flex items-center justify-center transition-colors shrink-0"
-          >
-            {isPlaying ? (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="white" fillOpacity="0.7">
-                <rect x="1" y="1" width="2" height="6" rx="0.5" />
-                <rect x="5" y="1" width="2" height="6" rx="0.5" />
-              </svg>
-            ) : (
-              <svg width="8" height="8" viewBox="0 0 8 8" fill="white" fillOpacity="0.7">
-                <path d="M2 1L7 4L2 7Z" />
-              </svg>
-            )}
-          </button>
+        {timeLabel && (
+          <span className="text-[0.5rem] tabular-nums text-white/20 shrink-0 font-light">{timeLabel}</span>
+        )}
 
-          {/* Minimal waveform bar placeholder */}
-          <div className="flex-1 flex items-center gap-[2px] h-4 overflow-hidden opacity-40">
-            {Array.from({ length: 32 }, (_, i) => {
-              const seed = (job.id.charCodeAt(i % job.id.length) + i * 7) % 100
-              const h = 20 + seed * 0.8
-              return (
-                <div
-                  key={i}
-                  className="flex-1 bg-white/50 rounded-[0.5px] min-w-[1px]"
-                  style={{ height: `${h}%` }}
-                />
-              )
-            })}
-          </div>
-
-          {/* Drag handle — drag this onto Ableton */}
-          <a
-            href={audioUrl}
-            download={`species8-${job.id}.wav`}
+        {/* Drag handle — drag to DAW */}
+        {audioUrl && (
+          <div
             draggable
             onDragStart={handleDragStart}
-            className="w-6 h-6 rounded-[4px] bg-white/[0.04] hover:bg-white/[0.10] border border-white/[0.08] flex items-center justify-center transition-colors shrink-0 cursor-grab active:cursor-grabbing"
-            title="Drag to Ableton or click to download"
+            className="w-7 h-7 rounded-md border border-white/[0.08] bg-white/[0.03] flex items-center justify-center text-white/25 hover:text-white/50 hover:bg-white/[0.06] hover:border-white/[0.15] transition-all shrink-0 cursor-grab active:cursor-grabbing"
+            title="Drag to DAW"
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeOpacity="0.4" strokeWidth="1">
-              <path d="M5 1v6M3 5l2 2 2-2" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M1 8h8" strokeLinecap="round" />
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <circle cx="4" cy="3.5" r="1" />
+              <circle cx="8" cy="3.5" r="1" />
+              <circle cx="4" cy="6.5" r="1" />
+              <circle cx="8" cy="6.5" r="1" />
+              <circle cx="4" cy="9.5" r="1" />
+              <circle cx="8" cy="9.5" r="1" />
             </svg>
-          </a>
-
-          <audio id={`audio-${job.id}`} ref={audioRef} preload="none" src={audioUrl} />
-        </div>
-      )}
-
-      {/* Row 2 alt: Status text when not ready */}
-      {!isReady && job.status !== "error" && (
-        <div className="mt-1.5 ml-[26px] text-[0.38rem] tracking-[0.3em] uppercase text-white/20">
-          {meta.label}
-        </div>
-      )}
-      {job.status === "error" && (
-        <div className="mt-1.5 ml-[26px] text-[0.38rem] tracking-[0.2em] text-white/20 normal-case">
-          {job.error ?? "Processing failed"}
-        </div>
-      )}
-
-      {/* AI Interpretation (collapsible) */}
-      {job.interpretation && showInterpretation && (
-        <div className="mt-2 ml-[26px] pl-2.5 border-l border-white/[0.06] space-y-1.5">
-          <div className="text-[0.42rem] tracking-[0.15em] text-white/45 italic normal-case">
-            {job.interpretation.mood}
           </div>
-          <div className="text-[0.38rem] leading-relaxed text-white/25 normal-case">
-            {job.interpretation.reasoning}
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {job.interpretation.filters.map((filter, i) => (
-              <span
-                key={i}
-                className="text-[0.36rem] tracking-[0.15em] bg-white/[0.04] border border-white/[0.06] rounded-[3px] px-1.5 py-0.5 text-white/30"
-                title={filter.reasoning}
-              >
-                {filter.type}
-              </span>
-            ))}
-          </div>
-          <div className="text-[0.33rem] tracking-[0.25em] uppercase text-white/15">
-            {Math.round(job.interpretation.confidence * 100)}% confidence
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+        )}
 
-function ControlModule({
-  label,
-  value,
-  isFirst,
-}: {
-  label: string
-  value: number
-  isFirst?: boolean
-}) {
-  const rotation = -110 + value * 220
-
-  return (
-    <div
-      className={`flex flex-col items-center justify-center gap-1 px-3 py-2.5 ${
-        isFirst ? "" : "border-l border-white/30"
-      }`}
-    >
-      <span className="text-white/60 text-[0.55rem] tracking-[0.45em]">{label}</span>
-      <div className="relative w-8 h-8 border border-white/70 rounded-[4px] bg-white/[0.04]">
-        <div className="absolute inset-[4px] border border-white/30 rounded-[3px]" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-[2px] h-3 bg-white" style={{ transform: `rotate(${rotation}deg)` }} />
-        </div>
+        {/* Expand toggle */}
+        <button
+          type="button"
+          onClick={() => setExpanded((p) => !p)}
+          className="w-6 h-6 flex items-center justify-center text-white/15 hover:text-white/40 transition-colors shrink-0"
+        >
+          <svg
+            width="8"
+            height="8"
+            viewBox="0 0 8 8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            className={`transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+          >
+            <path d="M1.5 3L4 5.5L6.5 3" />
+          </svg>
+        </button>
       </div>
+
+      {expanded && (
+        <div className="px-4 pb-3.5 pt-0 space-y-2.5 border-t border-white/[0.04]">
+          <div className="pt-2.5 text-[0.7rem] leading-relaxed text-white/40 normal-case">
+            {job.prompt}
+          </div>
+
+          {job.interpretation && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2.5">
+                <span className="text-[0.5rem] tracking-[0.25em] uppercase text-white/20 font-light">AI</span>
+                <span className="text-[0.6rem] text-white/30 italic normal-case">{job.interpretation.mood}</span>
+              </div>
+              <div className="text-[0.55rem] leading-relaxed text-white/20 normal-case">
+                {job.interpretation.reasoning}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {job.interpretation.filters.map((filter, i) => (
+                  <span
+                    key={i}
+                    className="text-[0.5rem] tracking-wider bg-violet-400/[0.04] border border-violet-400/[0.1] rounded px-2 py-[3px] text-white/30"
+                    title={filter.reasoning}
+                  >
+                    {filter.type}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {audioUrl && (
+            <div className="flex items-center gap-2.5 pt-1">
+              <a
+                href={audioUrl}
+                download={`species8-${job.id}.wav`}
+                className="text-[0.5rem] tracking-[0.2em] uppercase text-white/20 hover:text-violet-300/50 transition-colors duration-200"
+              >
+                Download WAV
+              </a>
+              <span className="text-white/[0.06]">|</span>
+              <span className="text-[0.45rem] tabular-nums text-white/10 font-light">{job.id}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <audio id={`audio-${job.id}`} ref={audioRef} preload="auto" src={audioUrl ?? undefined} />
     </div>
   )
 }
 
-function SphinxMascot() {
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function WaveformSVG({ data, seed, isPlaying, progress }: { data: number[] | null; seed: string; isPlaying: boolean; progress: number }) {
+  const W = 500
+  const H = 36
+  const MID = H / 2
+
+  // Build amplitude array — real peaks or seed-based fallback
+  const amps = useMemo(() => {
+    if (data && data.length > 0) {
+      // Smooth the real data with a 3-tap kernel
+      const smoothed: number[] = []
+      for (let i = 0; i < data.length; i++) {
+        const prev = data[Math.max(0, i - 1)]
+        const curr = data[i]
+        const next = data[Math.min(data.length - 1, i + 1)]
+        smoothed.push(prev * 0.2 + curr * 0.6 + next * 0.2)
+      }
+      return smoothed
+    }
+    // Fallback
+    const hash = (s: string) => {
+      let h = 0
+      for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
+      return h
+    }
+    const rng = (i: number) => {
+      const x = Math.sin(hash(seed) * 0.001 + i * 127.1) * 43758.5453
+      return x - Math.floor(x)
+    }
+    const n = 120
+    const out: number[] = []
+    for (let i = 0; i < n; i++) {
+      const base = rng(i) * 0.7 + 0.1
+      const env = Math.sin((i / n) * Math.PI)
+      out.push(base * env)
+    }
+    return out
+  }, [data, seed])
+
+  // Build smooth cubic bezier SVG paths (top + bottom mirrored)
+  const paths = useMemo(() => {
+    const n = amps.length
+    const step = W / n
+
+    let topPath = ""
+    let bottomPath = ""
+
+    for (let i = 0; i < n; i++) {
+      const x = i * step + step / 2
+      const a = amps[i] * MID * 0.88
+      const yTop = MID - a
+      const yBot = MID + a
+
+      if (i === 0) {
+        topPath = `M ${x} ${yTop}`
+        bottomPath = `M ${x} ${yBot}`
+      } else {
+        const px = (i - 1) * step + step / 2
+        const cpx = (px + x) / 2
+        const prevA = amps[i - 1] * MID * 0.88
+        topPath += ` C ${cpx} ${MID - prevA} ${cpx} ${yTop} ${x} ${yTop}`
+        bottomPath += ` C ${cpx} ${MID + prevA} ${cpx} ${yBot} ${x} ${yBot}`
+      }
+    }
+
+    // Close the fill shapes back to midline
+    const lastX = (n - 1) * step + step / 2
+    const firstX = step / 2
+    const topFill = `${topPath} L ${lastX} ${MID} L ${firstX} ${MID} Z`
+    const botFill = `${bottomPath} L ${lastX} ${MID} L ${firstX} ${MID} Z`
+
+    return { topPath, bottomPath, topFill, botFill }
+  }, [amps])
+
+  // Playhead x position
+  const playheadX = progress * W
+
   return (
-    <svg width="24" height="18" viewBox="0 0 24 18" fill="none" stroke="white" strokeWidth="0.9" className="opacity-80">
-      <path d="M2 13.5 L5.5 4.5 L8 1.5 L12 0.8 L16 2.2 L18.5 5.5 L21 13.5 Z" />
-      <path d="M8 10 L10.5 10.8 L12.5 9.2" />
-      <path d="M10 6.2 L11.5 5.5 L13 6.2" />
-      <path d="M4 15.5 H20" />
-      <path d="M6.5 15.5 L7.5 13 L9.2 12" />
-      <path d="M17.5 15.5 L16.5 13 L14.8 12" />
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-full">
+      <defs>
+        <clipPath id={`played-${seed}`}>
+          <rect x="0" y="0" width={playheadX} height={H} />
+        </clipPath>
+        <clipPath id={`unplayed-${seed}`}>
+          <rect x={playheadX} y="0" width={W - playheadX} height={H} />
+        </clipPath>
+      </defs>
+
+      {/* Center line */}
+      <line x1="0" y1={MID} x2={W} y2={MID} stroke="white" strokeOpacity="0.04" strokeWidth="0.5" />
+
+      {/* Unplayed fill */}
+      <g clipPath={`url(#unplayed-${seed})`}>
+        <path d={paths.topFill} fill="white" fillOpacity={isPlaying ? 0.06 : 0.03} />
+        <path d={paths.botFill} fill="white" fillOpacity={isPlaying ? 0.06 : 0.03} />
+        <path d={paths.topPath} fill="none" stroke="white" strokeOpacity={isPlaying ? 0.25 : 0.12} strokeWidth="1.2" />
+        <path d={paths.bottomPath} fill="none" stroke="white" strokeOpacity={isPlaying ? 0.25 : 0.12} strokeWidth="1.2" />
+      </g>
+
+      {/* Played fill — violet tint */}
+      <g clipPath={`url(#played-${seed})`}>
+        <path d={paths.topFill} fill="rgb(167,139,250)" fillOpacity={isPlaying ? 0.12 : 0.08} />
+        <path d={paths.botFill} fill="rgb(167,139,250)" fillOpacity={isPlaying ? 0.12 : 0.08} />
+        <path d={paths.topPath} fill="none" stroke="rgb(167,139,250)" strokeOpacity={isPlaying ? 0.7 : 0.45} strokeWidth="1.2" />
+        <path d={paths.bottomPath} fill="none" stroke="rgb(167,139,250)" strokeOpacity={isPlaying ? 0.7 : 0.45} strokeWidth="1.2" />
+      </g>
+
+      {/* Playhead line */}
+      {(isPlaying || progress > 0) && (
+        <line x1={playheadX} y1={1} x2={playheadX} y2={H - 1} stroke="rgb(167,139,250)" strokeOpacity="0.5" strokeWidth="1" />
+      )}
     </svg>
   )
 }
 
+/* ────────────────────────────────────────────────────────────────────────── */
+
 function DNAWaveformIcon() {
   return (
     <motion.svg
-      width="80"
-      height="28"
-      viewBox="0 0 80 28"
+      width="64"
+      height="22"
+      viewBox="0 0 64 22"
       fill="none"
       stroke="white"
-      strokeWidth="0.9"
-      className="opacity-80"
-      initial={{ opacity: 0.6 }}
-      animate={{ opacity: [0.6, 1, 0.6] }}
-      transition={{ duration: 4, repeat: Infinity }}
+      strokeWidth="0.7"
+      className="opacity-70"
+      initial={{ opacity: 0.5 }}
+      animate={{ opacity: [0.5, 0.85, 0.5] }}
+      transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
     >
       <motion.path
-        d="M2 8 C10 2 18 14 26 8 C34 2 42 14 50 8 C58 2 66 14 74 8"
+        d="M2 6 C8 2 14 11 20 6 C26 2 32 11 38 6 C44 2 50 11 56 6"
         strokeLinecap="round"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={{ duration: 2.8, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
+        transition={{ duration: 3, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
       />
       <motion.path
-        d="M2 20 C10 14 18 26 26 20 C34 14 42 26 50 20 C58 14 66 26 74 20"
+        d="M2 16 C8 11 14 20 20 16 C26 11 32 20 38 16 C44 11 50 20 56 16"
         strokeLinecap="round"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={{ duration: 2.8, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: 0.4 }}
+        transition={{ duration: 3, repeat: Infinity, repeatType: "reverse", ease: "easeInOut", delay: 0.5 }}
       />
-      {[0, 12, 24, 36, 48, 60, 72].map((x) => (
+      {[0, 10, 20, 30, 40, 50].map((x) => (
         <motion.line
           key={x}
-          x1={x + 4}
-          y1={9.2}
-          x2={x + 4}
-          y2={18.8}
+          x1={x + 3}
+          y1={7}
+          x2={x + 3}
+          y2={15}
           stroke="white"
-          strokeWidth="0.6"
-          initial={{ scaleY: 0.4 }}
-          animate={{ scaleY: [0.4, 1, 0.4] }}
-          transition={{ duration: 3.6, repeat: Infinity, delay: x / 120 }}
+          strokeWidth="0.4"
+          initial={{ scaleY: 0.3 }}
+          animate={{ scaleY: [0.3, 1, 0.3] }}
+          transition={{ duration: 4, repeat: Infinity, delay: x / 100 }}
         />
       ))}
     </motion.svg>

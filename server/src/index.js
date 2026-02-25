@@ -97,14 +97,19 @@ app.post("/uploads", upload.single("audio"), (req, res) => {
   res.json({ id: req.file.filename, name: req.file.originalname, size: req.file.size })
 })
 
+const previewDir = path.join(__dirname, "..", "previews")
 app.get("/previews/:id.wav", (req, res) => {
-  const buffer = dsp.getPreviewBuffer(req.params.id)
-  if (!buffer) {
+  const filePath = path.join(previewDir, `${req.params.id}.wav`)
+  if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: "Preview not ready" })
   }
-  res.setHeader("Content-Type", "audio/wav")
-  res.setHeader("Cache-Control", "no-store")
-  res.send(buffer)
+  res.sendFile(filePath, {
+    headers: {
+      "Content-Type": "audio/wav",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "no-store",
+    },
+  })
 })
 
 const server = app.listen(process.env.PORT || 4000, () => {
