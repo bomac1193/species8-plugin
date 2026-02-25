@@ -41,5 +41,16 @@ Thumbs.db
 *.app
 *.aax
 
+# Node
+node_modules/
+
+# Environment
+.env
+server/.env
+
+# Audio artifacts
+server/uploads/
+server/previews/
+
 # Submodules (if you add JUCE as submodule)
 JUCE/

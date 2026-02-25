@@ -6,12 +6,26 @@ import { motion } from "framer-motion"
 
 const SERVER_URL = process.env.NEXT_PUBLIC_SERVER_URL ?? "http://localhost:4000"
 
+type AIFilter = {
+  type: string
+  params?: Record<string, number | string>
+  reasoning?: string
+}
+
+type AIInterpretation = {
+  mood: string
+  reasoning: string
+  confidence: number
+  filters: AIFilter[]
+}
+
 type MutationJob = {
   id: string
   prompt: string
   status: string
   createdAt?: string
   previewUrl?: string | null
+  interpretation?: AIInterpretation
 }
 
 type UploadedReference = {
@@ -26,11 +40,11 @@ const controls = [
   { label: "OUT", value: 0.72 },
 ]
 
-const statusMeta: Record<string, { label: string; tone: string }> = {
-  processing: { label: "QUEUED", tone: "text-white/50" },
-  rendering: { label: "RENDERING", tone: "text-white/70" },
-  ready: { label: "READY", tone: "text-white" },
-  error: { label: "ERROR", tone: "text-white/30" },
+const statusMeta: Record<string, { label: string; dot: string; tone: string }> = {
+  processing: { label: "QUEUED", dot: "bg-white/30", tone: "text-white/40" },
+  rendering: { label: "RENDERING", dot: "bg-white/60 animate-pulse", tone: "text-white/60" },
+  ready: { label: "READY", dot: "bg-white", tone: "text-white/80" },
+  error: { label: "ERROR", dot: "bg-white/20", tone: "text-white/25" },
 }
 
 export default function PromptStudio() {
@@ -237,8 +251,8 @@ export default function PromptStudio() {
           <section className="flex flex-col gap-4">
             {/* Hidden honeypot fields absorb browser autofill */}
             <div aria-hidden="true" className="absolute opacity-0 h-0 overflow-hidden pointer-events-none">
-              <input type="text" name="username" tabIndex={-1} />
-              <input type="password" name="password" tabIndex={-1} />
+              <input type="text" name="username" tabIndex={-1} value="" readOnly />
+              <input type="password" name="password" tabIndex={-1} value="" readOnly />
             </div>
             <div className="flex items-stretch border border-white/70 rounded-[6px] bg-white/[0.05] backdrop-blur-sm">
               <input
@@ -311,58 +325,208 @@ export default function PromptStudio() {
               {mutationStatus.message}
             </div>
           )}
-          <div className="border border-white/15 rounded-[6px] bg-white/[0.02] backdrop-blur-[2px] px-3 py-3 space-y-2">
-            <div className="flex items-center justify-between text-[0.45rem] tracking-[0.35em] uppercase text-white/50">
-              <span>
-                Bridge:{" "}
-                <span
-                  className={
-                    bridgeStatus === "online" ? "text-white" : bridgeStatus === "connecting" ? "text-white/70" : "text-white/40"
-                  }
-                >
-                  {bridgeStatus}
-                </span>
-              </span>
-              <span>Queue</span>
+          <div className="rounded-[6px] overflow-hidden">
+            <div className="flex items-center justify-between px-3 py-2 bg-black border border-white/10 rounded-t-[6px]">
+              <div className="flex items-center gap-2 text-[0.45rem] tracking-[0.4em] uppercase text-white/50">
+                <span>MUTATIONS</span>
+                {mutations.length > 0 && (
+                  <span className="text-[0.4rem] bg-white/10 px-1.5 py-0.5 rounded-[3px] text-white/40">{mutations.length}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 text-[0.4rem] tracking-[0.3em] uppercase text-white/35">
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  bridgeStatus === "online" ? "bg-white/80" : bridgeStatus === "connecting" ? "bg-white/40 animate-pulse" : "bg-white/15"
+                }`} />
+                <span>{bridgeStatus}</span>
+              </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="bg-black border-x border-b border-white/10 rounded-b-[6px] divide-y divide-white/[0.06]">
               {mutations.length === 0 && (
-                <div className="text-[0.45rem] tracking-[0.35em] uppercase text-white/35">Awaiting mutations</div>
+                <div className="px-3 py-4 text-center text-[0.42rem] tracking-[0.35em] uppercase text-white/25">
+                  No mutations yet
+                </div>
               )}
-              {mutations.map((job) => {
-                const meta = statusMeta[job.status] ?? {
-                  label: job.status?.toUpperCase?.() ?? "UNKNOWN",
-                  tone: "text-white/40",
-                }
-                return (
-                  <div
-                    key={job.id}
-                    className="border border-white/10 rounded-[4px] px-2 py-2 text-[0.45rem] tracking-[0.3em] uppercase space-y-1"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-white/50">{job.id.replace("mut-", "#")}</span>
-                      <span className={meta.tone}>{meta.label}</span>
-                    </div>
-                    <div className="text-[0.42rem] tracking-tight text-white/40 uppercase truncate normal-case">
-                      {job.prompt}
-                    </div>
-                    {job.status === "ready" && job.previewUrl && (
-                      <audio
-                        controls
-                        preload="none"
-                        className="w-full mt-1 accent-white [&::-webkit-media-controls-panel]:bg-transparent"
-                      >
-                        <source src={`${previewOrigin}${job.previewUrl}`} type="audio/wav" />
-                      </audio>
-                    )}
-                  </div>
-                )
-              })}
+              {mutations.map((job, index) => (
+                <MutationCard key={job.id} job={job} index={index + 1} previewOrigin={previewOrigin} />
+              ))}
             </div>
           </div>
         </div>
       </div>
     </main>
+  )
+}
+
+function MutationCard({ job, index, previewOrigin }: { job: MutationJob; index: number; previewOrigin: string }) {
+  const [showInterpretation, setShowInterpretation] = useState(false)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const audioRef = useCallback((node: HTMLAudioElement | null) => {
+    if (!node) return
+    const onPlay = () => setIsPlaying(true)
+    const onPause = () => setIsPlaying(false)
+    const onEnded = () => setIsPlaying(false)
+    node.addEventListener("play", onPlay)
+    node.addEventListener("pause", onPause)
+    node.addEventListener("ended", onEnded)
+  }, [])
+
+  const meta = statusMeta[job.status] ?? {
+    label: job.status?.toUpperCase?.() ?? "UNKNOWN",
+    dot: "bg-white/20",
+    tone: "text-white/30",
+  }
+
+  const audioUrl = job.previewUrl ? `${previewOrigin}${job.previewUrl}` : null
+  const isReady = job.status === "ready" && audioUrl
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      if (!audioUrl) return
+      e.dataTransfer.effectAllowed = "copy"
+      e.dataTransfer.setData("text/uri-list", audioUrl)
+      e.dataTransfer.setData("text/plain", audioUrl)
+      e.dataTransfer.setData("DownloadURL", `audio/wav:species8-${job.id}.wav:${audioUrl}`)
+    },
+    [audioUrl, job.id],
+  )
+
+  const togglePlay = useCallback(() => {
+    const el = document.getElementById(`audio-${job.id}`) as HTMLAudioElement | null
+    if (!el) return
+    if (el.paused) {
+      el.play()
+    } else {
+      el.pause()
+    }
+  }, [job.id])
+
+  const timeLabel = useMemo(() => {
+    if (!job.createdAt) return ""
+    const d = new Date(job.createdAt)
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+  }, [job.createdAt])
+
+  return (
+    <div className="group px-3 py-2.5 hover:bg-white/[0.02] transition-colors">
+      {/* Row 1: Index + Prompt + Status */}
+      <div className="flex items-center gap-2.5">
+        <span className="text-[0.5rem] tabular-nums text-white/20 w-4 shrink-0 text-right font-light">
+          {String(index).padStart(2, "0")}
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.5rem] tracking-[0.15em] text-white/60 truncate">
+            {job.prompt}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {job.interpretation && (
+            <button
+              type="button"
+              onClick={() => setShowInterpretation((prev) => !prev)}
+              className="text-[0.38rem] tracking-[0.25em] uppercase text-white/20 hover:text-white/50 transition-colors px-1"
+            >
+              {showInterpretation ? "HIDE" : "AI"}
+            </button>
+          )}
+          {timeLabel && (
+            <span className="text-[0.38rem] tabular-nums text-white/15">{timeLabel}</span>
+          )}
+          <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${meta.dot}`} title={meta.label} />
+        </div>
+      </div>
+
+      {/* Row 2: Audio Player + Drag Handle (only when ready) */}
+      {isReady && (
+        <div className="flex items-center gap-2.5 mt-2 ml-[26px]">
+          <button
+            type="button"
+            onClick={togglePlay}
+            className="w-6 h-6 rounded-[4px] bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] flex items-center justify-center transition-colors shrink-0"
+          >
+            {isPlaying ? (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white" fillOpacity="0.7">
+                <rect x="1" y="1" width="2" height="6" rx="0.5" />
+                <rect x="5" y="1" width="2" height="6" rx="0.5" />
+              </svg>
+            ) : (
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white" fillOpacity="0.7">
+                <path d="M2 1L7 4L2 7Z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Minimal waveform bar placeholder */}
+          <div className="flex-1 flex items-center gap-[2px] h-4 overflow-hidden opacity-40">
+            {Array.from({ length: 32 }, (_, i) => {
+              const seed = (job.id.charCodeAt(i % job.id.length) + i * 7) % 100
+              const h = 20 + seed * 0.8
+              return (
+                <div
+                  key={i}
+                  className="flex-1 bg-white/50 rounded-[0.5px] min-w-[1px]"
+                  style={{ height: `${h}%` }}
+                />
+              )
+            })}
+          </div>
+
+          {/* Drag handle — drag this onto Ableton */}
+          <a
+            href={audioUrl}
+            download={`species8-${job.id}.wav`}
+            draggable
+            onDragStart={handleDragStart}
+            className="w-6 h-6 rounded-[4px] bg-white/[0.04] hover:bg-white/[0.10] border border-white/[0.08] flex items-center justify-center transition-colors shrink-0 cursor-grab active:cursor-grabbing"
+            title="Drag to Ableton or click to download"
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="white" strokeOpacity="0.4" strokeWidth="1">
+              <path d="M5 1v6M3 5l2 2 2-2" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M1 8h8" strokeLinecap="round" />
+            </svg>
+          </a>
+
+          <audio id={`audio-${job.id}`} ref={audioRef} preload="none" src={audioUrl} />
+        </div>
+      )}
+
+      {/* Row 2 alt: Status text when not ready */}
+      {!isReady && job.status !== "error" && (
+        <div className="mt-1.5 ml-[26px] text-[0.38rem] tracking-[0.3em] uppercase text-white/20">
+          {meta.label}
+        </div>
+      )}
+      {job.status === "error" && (
+        <div className="mt-1.5 ml-[26px] text-[0.38rem] tracking-[0.2em] text-white/20 normal-case">
+          {job.error ?? "Processing failed"}
+        </div>
+      )}
+
+      {/* AI Interpretation (collapsible) */}
+      {job.interpretation && showInterpretation && (
+        <div className="mt-2 ml-[26px] pl-2.5 border-l border-white/[0.06] space-y-1.5">
+          <div className="text-[0.42rem] tracking-[0.15em] text-white/45 italic normal-case">
+            {job.interpretation.mood}
+          </div>
+          <div className="text-[0.38rem] leading-relaxed text-white/25 normal-case">
+            {job.interpretation.reasoning}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {job.interpretation.filters.map((filter, i) => (
+              <span
+                key={i}
+                className="text-[0.36rem] tracking-[0.15em] bg-white/[0.04] border border-white/[0.06] rounded-[3px] px-1.5 py-0.5 text-white/30"
+                title={filter.reasoning}
+              >
+                {filter.type}
+              </span>
+            ))}
+          </div>
+          <div className="text-[0.33rem] tracking-[0.25em] uppercase text-white/15">
+            {Math.round(job.interpretation.confidence * 100)}% confidence
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
