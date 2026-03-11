@@ -65,8 +65,8 @@ const effects = {
     filter: (p) => `acrusher=bits=${p.bits ?? 8}:mode=log:aa=1:samples=${p.samples ?? 1}:mix=${p.mix ?? 0.4}`,
     defaults: { bits: 8, samples: 1, mix: 0.4 },
     ranges: { bits: [2, 16], samples: [1, 64], mix: [0, 1] },
-    description: "Bitcrusher for digital destruction, lo-fi, glitchy, degraded textures.",
-    tags: ["bitcrush", "glitch", "degrade", "digital", "destroy", "lofi"],
+    description: "Bitcrusher for digital destruction, lo-fi, glitchy, degraded textures. For HEAVY distortion: bits=2-4, mix=0.8-1.0, samples=8-32.",
+    tags: ["bitcrush", "glitch", "degrade", "digital", "destroy", "lofi", "distortion", "distort", "mangle", "heavy"],
   },
 
   pitch_shift: {
@@ -83,8 +83,8 @@ const effects = {
     filter: (p) => `afftfilt=real='hypot(re,im)*cos(atan2(im,re)*${p.warp ?? 1.5})':imag='hypot(re,im)*sin(atan2(im,re)*${p.warp ?? 1.5})':win_size=${p.win_size ?? 1024}:overlap=0.75`,
     defaults: { warp: 1.5, win_size: 1024 },
     ranges: { warp: [0.5, 4], win_size: [256, 4096] },
-    description: "FFT-based spectral warping for metallic, robotic, vocoder-like timbres.",
-    tags: ["metallic", "robotic", "vocoder", "spectral", "alien"],
+    description: "FFT-based spectral warping for metallic, robotic, vocoder-like timbres. For extreme metallic: warp=2.5-4.0.",
+    tags: ["metallic", "robotic", "vocoder", "spectral", "alien", "metal", "industrial", "mangle"],
   },
 
   chorus: {
@@ -110,8 +110,8 @@ const effects = {
     filter: (p) => `tremolo=f=${p.frequency ?? 6}:d=${p.depth ?? 0.7}`,
     defaults: { frequency: 6, depth: 0.7 },
     ranges: { frequency: [0.5, 40], depth: [0, 1] },
-    description: "Amplitude modulation / tremolo. Creates pulsing, stuttering, rhythmic volume changes.",
-    tags: ["tremolo", "pulse", "stutter", "wobble"],
+    description: "Amplitude modulation / tremolo. Creates pulsing, stuttering, rhythmic volume changes. For aggressive rhythmic pumping: frequency=15-40, depth=1.0.",
+    tags: ["tremolo", "pulse", "stutter", "wobble", "rhythmic", "pump", "chop"],
   },
 
   flanger: {
@@ -157,8 +157,8 @@ const effects = {
     filter: (p) => `asoftclip=type=${p.type ?? "tanh"}:threshold=${p.threshold ?? 1}:output=${p.output ?? 1}`,
     defaults: { type: "tanh", threshold: 1, output: 1 },
     ranges: { threshold: [0.01, 2], output: [0.1, 2] },
-    description: "Soft clipping / saturation with multiple curve types (tanh, atan, cubic, exp, alg, quintic, sin, erf). Warm tube-like distortion.",
-    tags: ["saturation", "warm", "tube", "tape", "soft"],
+    description: "Soft clipping / saturation with multiple curve types (tanh, atan, cubic, exp, alg, quintic, sin, erf). Warm tube-like distortion. For aggressive: threshold=0.1-0.3, output=1.5-2.0.",
+    tags: ["saturation", "warm", "tube", "tape", "soft", "distortion", "overdrive", "crunch"],
   },
 
   exciter: {
@@ -220,8 +220,8 @@ const effects = {
     filter: (p) => `vibrato=f=${p.frequency ?? 5}:d=${p.depth ?? 0.5}`,
     defaults: { frequency: 5, depth: 0.5 },
     ranges: { frequency: [0.1, 20], depth: [0, 1] },
-    description: "Pitch vibrato — periodic pitch modulation. Creates wobbly, watery, seasick effects at extreme settings.",
-    tags: ["vibrato", "wobble", "watery", "seasick", "warp"],
+    description: "Pitch vibrato — periodic pitch modulation. Creates wobbly, watery, seasick effects at extreme settings. For heavy warble: frequency=10-20, depth=0.8-1.0.",
+    tags: ["vibrato", "wobble", "watery", "seasick", "warp", "warble", "pitch", "pitch modulation"],
   },
 
   // ── PYTHON EFFECTS ──────────────────────────────────────────────

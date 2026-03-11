@@ -17,6 +17,7 @@ type AIInterpretation = {
   reasoning: string
   confidence: number
   filters: AIFilter[]
+  mergePhysics?: MergePhysics
 }
 
 type MutationJob = {
@@ -32,7 +33,82 @@ type MutationJob = {
 type UploadedReference = {
   id: string
   name: string
+  durationSec: number | null
+  isOneShot: boolean
+  playbackMode: OneShotPlaybackMode
 }
+
+type OneShotPlaybackMode = "normal" | "loop" | "stretch" | "texture"
+
+type MergePhysics = {
+  territoriality: number
+  timbre_transfer: number
+  harmonic_infection: number
+  gravitational_pull: number
+  phase_entanglement: number
+  temporal_magnetism: number
+}
+
+const defaultMergePhysics: MergePhysics = {
+  territoriality: 0.5,
+  timbre_transfer: 0.2,
+  harmonic_infection: 0.15,
+  gravitational_pull: 0.2,
+  phase_entanglement: 0.1,
+  temporal_magnetism: 0.3,
+}
+
+const mergeControls: Array<{ key: keyof MergePhysics; label: string; hint: string }> = [
+  { key: "territoriality", label: "Dominance Clash", hint: "High: one sound crushes the other by frequency." },
+  { key: "timbre_transfer", label: "Timbre Melt", hint: "High: source A's tone imprint bleeds into source B." },
+  { key: "harmonic_infection", label: "Overtone Infection", hint: "High: spectral ghosts and overtone bleed." },
+  { key: "gravitational_pull", label: "Pitch Gravity", hint: "High: submissive track bends hard toward dominant key." },
+  { key: "phase_entanglement", label: "Phase Lock", hint: "High: tighter fusion, metallic/comb texture." },
+  { key: "temporal_magnetism", label: "Rhythm Hijack", hint: "High: transients are pulled to dominant groove." },
+]
+
+const mergePresets: Array<{ name: string; values: MergePhysics }> = [
+  {
+    name: "Fight",
+    values: {
+      territoriality: 1,
+      timbre_transfer: 0.12,
+      harmonic_infection: 0.35,
+      gravitational_pull: 0.18,
+      phase_entanglement: 0.45,
+      temporal_magnetism: 0.72,
+    },
+  },
+  {
+    name: "Melt",
+    values: {
+      territoriality: 0.35,
+      timbre_transfer: 0.95,
+      harmonic_infection: 0.78,
+      gravitational_pull: 0.82,
+      phase_entanglement: 0.66,
+      temporal_magnetism: 0.35,
+    },
+  },
+  {
+    name: "Possessed",
+    values: {
+      territoriality: 0.7,
+      timbre_transfer: 0.8,
+      harmonic_infection: 1,
+      gravitational_pull: 0.9,
+      phase_entanglement: 0.86,
+      temporal_magnetism: 0.75,
+    },
+  },
+]
+
+const playbackModes: Array<{ key: OneShotPlaybackMode; label: string }> = [
+  { key: "normal", label: "Normal" },
+  { key: "loop", label: "Loop" },
+  { key: "stretch", label: "Stretch" },
+  { key: "texture", label: "Texture" },
+]
 
 const statusMeta: Record<string, { label: string; dot: string; tone: string }> = {
   processing: { label: "QUEUED", dot: "bg-white/25", tone: "text-white/35" },
@@ -43,6 +119,8 @@ const statusMeta: Record<string, { label: string; dot: string; tone: string }> =
 
 export default function PromptStudio() {
   const [uploads, setUploads] = useState<UploadedReference[]>([])
+  const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null)
+  const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null)
   const [prompt, setPrompt] = useState("")
   const [isMutating, setIsMutating] = useState(false)
   const [mutationStatus, setMutationStatus] = useState<null | { kind: "success" | "error"; message: string }>(null)
@@ -50,6 +128,8 @@ export default function PromptStudio() {
   const [bridgeStatus, setBridgeStatus] = useState<"connecting" | "online" | "offline">("connecting")
   const [isUploading, setIsUploading] = useState(false)
   const [timeExtend, setTimeExtend] = useState(1)
+  const [mergePhysics, setMergePhysics] = useState<MergePhysics>(defaultMergePhysics)
+  const replaceInputRef = useRef<HTMLInputElement | null>(null)
 
   const wsUrl = useMemo(() => {
     if (SERVER_URL.startsWith("https://")) return SERVER_URL.replace("https://", "wss://")
@@ -71,6 +151,28 @@ export default function PromptStudio() {
     return response.json()
   }, [])
 
+  const getAudioDuration = useCallback((file: File) => {
+    return new Promise<number | null>((resolve) => {
+      const audio = document.createElement("audio")
+      const url = URL.createObjectURL(file)
+      const cleanup = () => {
+        URL.revokeObjectURL(url)
+        audio.remove()
+      }
+      audio.preload = "metadata"
+      audio.src = url
+      audio.onloadedmetadata = () => {
+        const duration = Number.isFinite(audio.duration) ? audio.duration : null
+        cleanup()
+        resolve(duration)
+      }
+      audio.onerror = () => {
+        cleanup()
+        resolve(null)
+      }
+    })
+  }, [])
+
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       if (!acceptedFiles.length) return
@@ -80,7 +182,15 @@ export default function PromptStudio() {
         for (const file of acceptedFiles) {
           try {
             const uploaded = await uploadFile(file)
-            next.push({ id: uploaded.id, name: uploaded.name ?? file.name })
+            const durationSec = await getAudioDuration(file)
+            const isOneShot = durationSec !== null && durationSec <= 2.5
+            next.push({
+              id: uploaded.id,
+              name: uploaded.name ?? file.name,
+              durationSec,
+              isOneShot,
+              playbackMode: isOneShot ? "loop" : "normal",
+            })
           } catch (error) {
             console.error("Upload failed", error)
             setMutationStatus({ kind: "error", message: `Failed to upload ${file.name}` })
@@ -88,27 +198,56 @@ export default function PromptStudio() {
         }
         if (next.length) {
           setUploads((prev) => [...next, ...prev].slice(0, 4))
+          setSelectedUploadId((prev) => prev ?? next[0].id)
         }
         setIsUploading(false)
       })()
     },
-    [uploadFile],
+    [uploadFile, getAudioDuration],
   )
 
+  const replaceUpload = useCallback(async (targetId: string, file: File) => {
+    const uploaded = await uploadFile(file)
+    const durationSec = await getAudioDuration(file)
+    const isOneShot = durationSec !== null && durationSec <= 2.5
+    setUploads((prev) =>
+      prev.map((item) =>
+        item.id === targetId
+          ? {
+              id: uploaded.id,
+              name: uploaded.name ?? file.name,
+              durationSec,
+              isOneShot,
+              playbackMode: isOneShot ? item.playbackMode ?? "loop" : "normal",
+            }
+          : item,
+      ),
+    )
+    setSelectedUploadId(uploaded.id)
+  }, [uploadFile, getAudioDuration])
+
   // getRootProps goes on the drop zone div — the proven working pattern
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     accept: { "audio/*": [] },
     multiple: true,
     useFsAccessApi: false,
+    noClick: true,
+    noKeyboard: true,
   })
 
   const dropLabel = useMemo(() => {
     if (isUploading) return "Uploading..."
     if (uploads.length === 0) return "Drop audio"
-    if (uploads.length === 1) return uploads[0].name
-    return `${uploads.length} files — merged`
+    if (uploads.length === 1) return `A: ${uploads[0].name}`
+    const labels = uploads.map((_, i) => String.fromCharCode(65 + i)).join(" + ")
+    return `${labels} loaded`
   }, [uploads, isUploading])
+
+  const selectedUpload = useMemo(
+    () => uploads.find((item) => item.id === selectedUploadId) ?? null,
+    [uploads, selectedUploadId],
+  )
 
   const upsertMutation = useCallback((job: MutationJob) => {
     if (!job?.id) return
@@ -189,13 +328,25 @@ export default function PromptStudio() {
     setIsMutating(true)
     setMutationStatus(null)
 
+    const playbackModeMap = Object.fromEntries(
+      uploads
+        .filter((item) => item.playbackMode !== "normal")
+        .map((item) => [item.id, item.playbackMode]),
+    )
+
     try {
       const response = await fetch(`${SERVER_URL}/mutate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: trimmed,
-          settings: { references: uploads.map((item) => item.id), timeExtend, source: "species8-monolith" },
+          settings: {
+            references: uploads.map((item) => item.id),
+            timeExtend,
+            source: "species8-monolith",
+            ...(Object.keys(playbackModeMap).length > 0 ? { playbackModes: playbackModeMap } : {}),
+            ...(uploads.length > 1 ? { mergePhysics } : {}),
+          },
         }),
       })
 
@@ -218,7 +369,7 @@ export default function PromptStudio() {
     } finally {
       setIsMutating(false)
     }
-  }, [prompt, uploads, timeExtend, upsertMutation])
+  }, [prompt, uploads, timeExtend, mergePhysics, upsertMutation])
 
   return (
     <div className="min-h-screen bg-black text-white flex items-center justify-center px-3 py-8 selection:bg-violet-400/20">
@@ -258,34 +409,154 @@ export default function PromptStudio() {
               })}
             >
               <input {...getInputProps()} />
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept="audio/*"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  const targetId = replaceTargetId
+                  event.currentTarget.value = ""
+                  if (!file || !targetId) return
+                  setIsUploading(true)
+                  ;(async () => {
+                    try {
+                      await replaceUpload(targetId, file)
+                      setMutationStatus({ kind: "success", message: "Sample replaced for selected slot." })
+                    } catch (error) {
+                      console.error("Replace failed", error)
+                      setMutationStatus({ kind: "error", message: "Failed to replace sample." })
+                    } finally {
+                      setIsUploading(false)
+                      setReplaceTargetId(null)
+                    }
+                  })()
+                }}
+              />
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-white/20 group-hover:text-white/35 transition-colors shrink-0">
                     <path d="M7 9V2M4.5 4.5L7 2l2.5 2.5" />
                     <path d="M2.5 11.5h9" />
                   </svg>
-                  <span className={`text-[0.65rem] tracking-[0.25em] uppercase transition-colors truncate ${
-                    isDragActive ? "text-violet-300/45" : "text-white/25 group-hover:text-white/40"
+                  <span className={`text-[0.65rem] tracking-[0.2em] uppercase transition-colors truncate ${
+                    isDragActive ? "text-white/55" : "text-white/25 group-hover:text-white/40"
                   }`}>
                     {dropLabel}
                   </span>
                 </div>
-                {uploads.length > 1 && (
-                  <span className="text-[0.45rem] tracking-wider uppercase text-violet-300/25 shrink-0 pl-3">merged</span>
-                )}
-                {uploads.length === 1 && (
+                {uploads.length >= 1 && (
                   <button
                     type="button"
-                    onClick={(e) => { e.stopPropagation(); setUploads([]) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setUploads([])
+                      setSelectedUploadId(null)
+                    }}
                     className="text-[0.45rem] text-white/15 hover:text-white/35 transition-colors shrink-0 pl-3"
                   >
                     clear
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    open()
+                  }}
+                  className="text-[0.45rem] text-white/22 hover:text-white/50 transition-colors shrink-0 pl-3 uppercase tracking-[0.18em]"
+                >
+                  add
+                </button>
               </div>
               {isUploading && (
                 <div className="px-4 pb-2.5 text-[0.55rem] tracking-[0.2em] text-violet-300/30 animate-pulse uppercase">
                   Uploading
+                </div>
+              )}
+              {uploads.length > 0 && (
+                <div className="px-4 pb-2.5 flex flex-wrap gap-1.5">
+                  {uploads.map((upload, i) => {
+                    const slot = String.fromCharCode(65 + i)
+                    const isSelected = selectedUploadId === upload.id
+                    return (
+                      <div
+                        key={upload.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedUploadId(upload.id)
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setReplaceTargetId(upload.id)
+                          replaceInputRef.current?.click()
+                        }}
+                        className={`inline-flex flex-col gap-1 rounded-md border px-2 py-1.5 max-w-full cursor-pointer transition-colors ${
+                          isSelected
+                            ? "border-white/40 bg-white/[0.08]"
+                            : "border-white/[0.12] bg-white/[0.02] hover:border-white/[0.25]"
+                        }`}
+                        title="Left click: select/edit mode • Right click: replace sample"
+                      >
+                        <div className="inline-flex items-center gap-2">
+                          <span className="text-[0.45rem] tracking-[0.2em] uppercase text-white/45 shrink-0">{slot}</span>
+                          <span className="text-[0.5rem] text-white/35 truncate max-w-[180px]">{upload.name}</span>
+                          <span className="text-[0.42rem] tracking-[0.12em] uppercase border border-white/[0.2] rounded px-1 py-[1px] text-white/50">
+                            {upload.isOneShot ? "one-shot" : "clip"}
+                          </span>
+                        </div>
+                        <div className="text-[0.42rem] tracking-[0.12em] uppercase text-white/50">
+                          mode: {upload.playbackMode}
+                        </div>
+                        {isSelected && (
+                          <div className="text-[0.42rem] text-white/35 leading-snug">
+                            Left click to edit mode. Right click to replace this sample.
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {selectedUpload && (
+                <div className="px-4 pb-2.5">
+                  <div className="rounded-md border border-white/[0.18] bg-white/[0.03] px-2.5 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[0.45rem] tracking-[0.2em] uppercase text-white/58">
+                        selected: {selectedUpload.name}
+                      </span>
+                      <span className="text-[0.42rem] tracking-[0.2em] uppercase text-white/65">
+                        current {selectedUpload.playbackMode}
+                      </span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5">
+                      {playbackModes.map((mode) => (
+                        <button
+                          key={mode.key}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setUploads((prev) => prev.map((item) => (
+                              item.id === selectedUpload.id ? { ...item, playbackMode: mode.key } : item
+                            )))
+                          }}
+                          className={`text-[0.47rem] tracking-[0.18em] uppercase px-2 py-1 rounded border transition-colors ${
+                            selectedUpload.playbackMode === mode.key
+                              ? "border-white/70 text-white/90 bg-white/[0.1]"
+                              : "border-white/[0.18] text-white/40 hover:text-white/70 hover:border-white/[0.35]"
+                          }`}
+                        >
+                          {mode.label}
+                        </button>
+                      ))}
+                    </div>
+                    {!selectedUpload.isOneShot && (
+                      <div className="text-[0.47rem] text-white/35">Modes are strongest on one-shots, but still available on longer clips.</div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -345,6 +616,61 @@ export default function PromptStudio() {
                 ))}
               </div>
             </div>
+
+            {uploads.length > 1 && (
+              <div className="rounded-lg border border-white/[0.12] bg-white/[0.015] px-3 py-2.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[0.5rem] tracking-[0.3em] uppercase text-white/55">Merge Physics</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMergePhysics(defaultMergePhysics)}
+                      className="text-[0.45rem] tracking-[0.2em] uppercase text-white/28 hover:text-white/60 transition-colors"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="text-[0.55rem] text-white/40 leading-relaxed">
+                  Higher values are intentionally extreme: stranger tone transfer, stronger pitch bending, harder rhythmic forcing.
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {mergePresets.map((preset) => (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      onClick={() => setMergePhysics(preset.values)}
+                      className="text-[0.5rem] tracking-[0.2em] uppercase px-2 py-1 rounded border border-white/[0.14] text-white/45 hover:text-white/80 hover:border-white/[0.35] hover:bg-white/[0.06] transition-all"
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  {mergeControls.map((control) => (
+                    <label key={control.key} className="space-y-1">
+                      <div className="flex items-center justify-between text-[0.45rem] tracking-[0.14em] uppercase text-white/30">
+                        <span>{control.label}</span>
+                        <span className="tabular-nums text-white/25">{mergePhysics[control.key].toFixed(2)}</span>
+                      </div>
+                      <div className="text-[0.5rem] leading-snug text-white/22">{control.hint}</div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={mergePhysics[control.key]}
+                        onChange={(event) => {
+                          const value = Number(event.target.value)
+                          setMergePhysics((prev) => ({ ...prev, [control.key]: value }))
+                        }}
+                        className="w-full brutalist-slider"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Status toast */}
             {mutationStatus && (

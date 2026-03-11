@@ -5,7 +5,7 @@ import { execFile, spawn } from "child_process"
 import { fileURLToPath } from "url"
 import { promisify } from "util"
 import { buildFfmpegFilter, getEffect, getPythonScript } from "./effectLibrary.js"
-import { runPythonEffect } from "./pythonEffects.js"
+import { runPythonEffect, runMergePhysics } from "./pythonEffects.js"
 
 const execFileAsync = promisify(execFile)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -74,23 +74,28 @@ export default class DspBridge extends EventEmitter {
   }
 
   async processJob(job) {
-    const referencePaths = (job.settings?.references ?? [])
-      .map((id) => this.resolveReference(id))
-      .filter(Boolean)
-      .map((reference) => reference.path)
+    const referenceItems = (job.settings?.references ?? [])
+      .map((id) => ({ id, ref: this.resolveReference(id) }))
+      .filter((item) => Boolean(item.ref?.path))
+    const referencePaths = referenceItems.map((item) => item.ref.path)
+    const playbackModes = referenceItems.map((item) => (
+      job.settings?.playbackModes?.[item.id]
+      ?? job.settings?.oneShotModes?.[item.id]
+      ?? "normal"
+    ))
 
     if (referencePaths.length && this.renderer) {
-      this.sendRendererJob(job, referencePaths)
+      this.sendRendererJob(job, referencePaths, playbackModes)
       return
     }
 
-    await this.renderWithFallback(job, referencePaths[0])
+    await this.renderWithFallback(job, referencePaths, playbackModes)
   }
 
-  sendRendererJob(job, referencePaths) {
+  sendRendererJob(job, referencePaths, playbackModes = []) {
     if (!this.renderer || !this.renderer.stdin.writable) {
       console.warn("Renderer unavailable, falling back to internal preview")
-      this.renderWithFallback(job, referencePaths[0])
+      this.renderWithFallback(job, referencePaths, playbackModes)
       return
     }
 
@@ -98,6 +103,7 @@ export default class DspBridge extends EventEmitter {
       id: job.id,
       prompt: job.prompt ?? "",
       references: referencePaths,
+      playbackModes,
       controls: job.settings?.controls ?? {},
     }
 
@@ -105,22 +111,33 @@ export default class DspBridge extends EventEmitter {
       this.renderer.stdin.write(`${JSON.stringify(payload)}\n`)
     } catch (error) {
       console.error("Failed to send job to renderer", error)
-      this.renderWithFallback(job, referencePaths[0])
+      this.renderWithFallback(job, referencePaths, playbackModes)
     }
   }
 
-  async renderWithFallback(job, referencePath) {
+  async renderWithFallback(job, referencePaths, playbackModes = []) {
     try {
       job.status = "rendering"
       this.emit("mutation:rendering", job)
+
+      const referencePath = referencePaths?.[0] ?? null
 
       // Try AI interpretation first, fall through to keyword matching on failure
       let buffer = null
       if (this.promptBrain && referencePath) {
         try {
-          buffer = await this.createAIPreview(job, referencePath)
+          buffer = await this.createAIPreview(job, referencePaths, playbackModes)
         } catch (error) {
           console.warn("AI preview failed, falling back to keywords:", error.message)
+          buffer = null
+        }
+      }
+
+      if (!buffer && referencePaths.length > 1) {
+        try {
+          buffer = await this.createDirectMergePreview(job, referencePaths, playbackModes)
+        } catch (error) {
+          console.warn("Direct merge failed, falling back to keywords:", error.message)
           buffer = null
         }
       }
@@ -141,23 +158,32 @@ export default class DspBridge extends EventEmitter {
     }
   }
 
-  async createAIPreview(job, referencePath) {
-    const interpretation = await this.promptBrain.interpret(job.prompt)
-    if (!interpretation || !interpretation.filters.length) return null
+  async createAIPreview(job, referencePaths, playbackModes = []) {
+    const isMultiFile = referencePaths.length > 1
+    const interpretation = await this.promptBrain.interpret(job.prompt, isMultiFile)
+    if (!interpretation) return null
+    const interpretedFilters = Array.isArray(interpretation.filters) ? interpretation.filters : []
 
     // Store interpretation on the job for UI display
+    const mergePhysics = normalizeMergePhysics(job.settings?.mergePhysics)
+      ?? normalizeMergePhysics(interpretation.mergePhysics)
+      ?? getDefaultPhysics()
+
     job.interpretation = {
       mood: interpretation.mood,
       reasoning: interpretation.reasoning,
       confidence: interpretation.confidence,
-      filters: interpretation.filters,
+      filters: interpretedFilters,
+    }
+    if (isMultiFile) {
+      job.interpretation.mergePhysics = mergePhysics
     }
 
     // Split into ffmpeg and python effects
     const ffmpegFilters = []
     const pythonSteps = []
 
-    for (const filter of interpretation.filters) {
+    for (const filter of interpretedFilters) {
       const effect = getEffect(filter.type)
       if (!effect) continue
 
@@ -170,12 +196,50 @@ export default class DspBridge extends EventEmitter {
       }
     }
 
-    if (ffmpegFilters.length === 0 && pythonSteps.length === 0) return null
+    if (ffmpegFilters.length === 0 && pythonSteps.length === 0 && !isMultiFile) return null
 
-    let currentPath = referencePath
+    let currentPath = referencePaths[0]
     const tempFiles = []
 
     try {
+      // Step 0: Merge physics (multi-file only)
+      if (isMultiFile) {
+        const mergedPath = path.join(previewDir, `${job.id}_merged.wav`)
+        tempFiles.push(mergedPath)
+        const variationSeed = createVariationSeed(job)
+
+        try {
+          console.log(`[merge] Running merge_physics on ${referencePaths.length} tracks...`)
+          await runMergePhysics(mergedPath, {
+            inputs: referencePaths,
+            physics: mergePhysics,
+            playback_modes: playbackModes,
+            variation_seed: variationSeed,
+          })
+          currentPath = mergedPath
+          console.log("[merge] Merge physics complete")
+        } catch (mergeError) {
+          console.warn("[merge] merge_physics failed, falling back to ffmpeg amix:", mergeError.message)
+          // Fallback: simple ffmpeg amix
+          try {
+            const amixArgs = ["-y"]
+            for (const p of referencePaths) {
+              amixArgs.push("-i", p)
+            }
+            amixArgs.push(
+              "-filter_complex", `amix=inputs=${referencePaths.length}:duration=longest:normalize=0`,
+              "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", mergedPath,
+            )
+            await execFileAsync("ffmpeg", amixArgs)
+            currentPath = mergedPath
+            console.log("[merge] ffmpeg amix fallback complete")
+          } catch (amixError) {
+            console.error("[merge] ffmpeg amix also failed:", amixError.message)
+            // Last resort: just use first file
+          }
+        }
+      }
+
       // Step 1: Run ffmpeg filters (chained)
       if (ffmpegFilters.length > 0) {
         const ffmpegOutput = path.join(previewDir, `${job.id}_ffmpeg.wav`)
@@ -210,6 +274,42 @@ export default class DspBridge extends EventEmitter {
     }
   }
 
+  async createDirectMergePreview(job, referencePaths, playbackModes = []) {
+    const physics = normalizeMergePhysics(job.settings?.mergePhysics) ?? getDefaultPhysics()
+    const outputPath = path.join(previewDir, `${job.id}.wav`)
+    const variationSeed = createVariationSeed(job)
+
+    job.interpretation = {
+      mood: "manual merge",
+      reasoning: "Merged references using merge physics controls.",
+      confidence: 1,
+      filters: [],
+      mergePhysics: physics,
+    }
+
+    try {
+      await runMergePhysics(outputPath, {
+        inputs: referencePaths,
+        physics,
+        playback_modes: playbackModes,
+        variation_seed: variationSeed,
+      })
+    } catch (mergeError) {
+      console.warn("[merge] direct merge_physics failed, using ffmpeg amix:", mergeError.message)
+      const args = ["-y"]
+      for (const p of referencePaths) {
+        args.push("-i", p)
+      }
+      args.push(
+        "-filter_complex", `amix=inputs=${referencePaths.length}:duration=longest:normalize=0`,
+        "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", outputPath,
+      )
+      await execFileAsync("ffmpeg", args)
+    }
+
+    return fs.promises.readFile(outputPath)
+  }
+
   startRenderer() {
     if (!this.rendererPath) return
     try {
@@ -227,12 +327,17 @@ export default class DspBridge extends EventEmitter {
         // Rescue any in-flight jobs stuck at processing/rendering
         for (const job of this.history) {
           if (job.status === "processing" || job.status === "rendering") {
-            const refPath = (job.settings?.references ?? [])
+            const refPaths = (job.settings?.references ?? [])
               .map((id) => this.resolveReference(id))
               .filter(Boolean)
-              .map((ref) => ref.path)[0] ?? null
-            console.warn(`Rescuing stuck job ${job.id} via fallback (ref=${refPath ? "yes" : "none"})`)
-            this.renderWithFallback(job, refPath)
+              .map((ref) => ref.path)
+            const playbackModes = (job.settings?.references ?? []).map((id) => (
+              job.settings?.playbackModes?.[id]
+              ?? job.settings?.oneShotModes?.[id]
+              ?? "normal"
+            ))
+            console.warn(`Rescuing stuck job ${job.id} via fallback (refs=${refPaths.length})`)
+            this.renderWithFallback(job, refPaths, playbackModes)
           }
         }
         if (this.rendererRestartTimer) {
@@ -400,6 +505,41 @@ function createPreviewBuffer(seed) {
   return buffer
 }
 
+function getDefaultPhysics() {
+  return {
+    territoriality: 0.5,
+    timbre_transfer: 0.2,
+    harmonic_infection: 0.15,
+    gravitational_pull: 0.2,
+    phase_entanglement: 0.1,
+    temporal_magnetism: 0.3,
+  }
+}
+
+function normalizeMergePhysics(input) {
+  if (!input || typeof input !== "object") return null
+  const defaults = getDefaultPhysics()
+  const out = {}
+  let hasAny = false
+
+  for (const [key, fallback] of Object.entries(defaults)) {
+    const value = input[key]
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[key] = Math.min(1, Math.max(0, value))
+      hasAny = true
+    } else {
+      out[key] = fallback
+    }
+  }
+
+  return hasAny ? out : null
+}
+
+function createVariationSeed(job) {
+  const promptHash = (job?.prompt ?? "").split("").reduce((acc, ch) => ((acc << 5) - acc + ch.charCodeAt(0)) | 0, 0)
+  return `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}-${Math.abs(promptHash)}`
+}
+
 function buildFilterGraph(prompt) {
   const lower = prompt.toLowerCase()
   const filters = ["aformat=channel_layouts=stereo"]
@@ -436,8 +576,9 @@ function buildFilterGraph(prompt) {
     filters.push("aeval=val(0)+random(0)*0.02|val(1)+random(1)*0.02")
   }
 
-  if (hasToken(lower, ["distortion", "distort", "saturate", "crunch", "overdrive"])) {
-    filters.push("acrusher=bits=8:mode=log:aa=1:samples=1:mix=0.4")
+  if (hasToken(lower, ["distortion", "distort", "saturate", "crunch", "overdrive", "mangle", "destroy", "heavy"])) {
+    filters.push("acrusher=bits=4:mode=log:aa=1:samples=8:mix=0.85")
+    filters.push("asoftclip=type=tanh:threshold=0.3:output=1.5")
   }
 
   if (hasToken(lower, ["pitch up", "higher pitch", "chipmunk"])) {
@@ -446,8 +587,8 @@ function buildFilterGraph(prompt) {
     filters.push("asetrate=48000*0.8,aresample=48000")
   }
 
-  if (hasToken(lower, ["spectral", "metallic", "robotic", "vocoder"])) {
-    filters.push("afftfilt=real='hypot(re,im)*cos(atan2(im,re)*1.5)':imag='hypot(re,im)*sin(atan2(im,re)*1.5)':win_size=1024:overlap=0.75")
+  if (hasToken(lower, ["spectral", "metallic", "robotic", "vocoder", "metal"])) {
+    filters.push("afftfilt=real='hypot(re,im)*cos(atan2(im,re)*3)':imag='hypot(re,im)*sin(atan2(im,re)*3)':win_size=1024:overlap=0.75")
   }
 
   if (hasToken(lower, ["chorus", "shimmer", "lush"])) {
@@ -458,12 +599,16 @@ function buildFilterGraph(prompt) {
     filters.push("acompressor=threshold=-20dB:ratio=6:attack=5:release=50:makeup=4dB")
   }
 
-  if (hasToken(lower, ["tremolo", "pulse", "stutter"])) {
-    filters.push("tremolo=f=6:d=0.7")
+  if (hasToken(lower, ["tremolo", "pulse", "stutter", "rhythmic", "chop"])) {
+    filters.push("tremolo=f=12:d=1.0")
   }
 
   if (hasToken(lower, ["flanger", "jet", "sweep"])) {
     filters.push("flanger=delay=3:depth=6:speed=0.4:regen=30:width=70")
+  }
+
+  if (hasToken(lower, ["warble", "warp", "wobble", "seasick"])) {
+    filters.push("vibrato=f=12:d=0.9")
   }
 
   return filters.join(",")
